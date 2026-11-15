@@ -55,21 +55,26 @@ Two ways to deploy:
 1. **Single host.** Deploy the whole repository to the long-lived host with
    `npm start` as the start command. The server serves the page and the game.
    Nothing to configure.
-2. **Client on Vercel, server on Render.** The repository includes
-   `render.yaml` and `vercel.json` for this.
-   1. In Render, create a **Blueprint** from this repository. It creates the
-      `hackenbush-server` web service. Note its URL, for example
-      `https://hackenbush-server.onrender.com`.
-   2. In Vercel, import this repository and add the environment variable
-      `SERVER_URL` set to the Render URL. The build step
-      (`node scripts/write-config.js`) writes it into `public/config.js`, and
-      Vercel serves the `public/` folder.
+2. **Client on Vercel, server on Render.**
+   1. In Render, create a **Blueprint** from this repository (`render.yaml`).
+      It creates the `hackenbush-server` web service. Note its URL, for
+      example `https://hackenbush-server.onrender.com`.
+   2. Build a copy of the client that points at that URL, and deploy the copy
+      to Vercel as a static site:
+
+      ```sh
+      rm -rf /tmp/hackenbush-client && cp -r public /tmp/hackenbush-client
+      SERVER_URL=https://hackenbush-server.onrender.com \
+        node scripts/write-config.js /tmp/hackenbush-client/config.js
+      cd /tmp/hackenbush-client && npx vercel link --yes --project hackenbush-online
+      npx vercel deploy --prod
+      ```
+
+      The repository's own `public/config.js` stays empty, so local runs are
+      unaffected. (Deploy the copy, not the repository root: Vercel reads
+      `render.yaml` as a Node service and refuses a static build next to it.)
    3. Back in Render, set `ALLOWED_ORIGIN` to the Vercel site's origin, for
       example `https://hackenbush-online.vercel.app`, and let it redeploy.
-
-   For any other split setup, set `window.SERVER_URL` in `public/config.js`
-   (or run `SERVER_URL=https://... node scripts/write-config.js`) and set
-   `ALLOWED_ORIGIN` on the server.
 
 Use `https` URLs in both places; the client then connects with encrypted
 `wss://` WebSockets. Only the one origin in `ALLOWED_ORIGIN` may create or join
