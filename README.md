@@ -1,16 +1,24 @@
 # Hackenbush Online
 
-Two-player Red-Blue Hackenbush in the browser. One player creates a game and
-shares a 5-character code (or a join link); the other joins with it. A Node.js
-server holds the game state, checks every move, and sends the board to both
-players over WebSockets.
+Play Red-Blue or Green Hackenbush with a friend or an offline bot.
+Try the [live beta](https://hackenbush-online.vercel.app).
+
+Enter your name, create a room and share its five-character code. The host
+chooses the mode, board and starting side, then presses **Start**. Both players
+return to the room after the result and can play again. **Copy code** copies
+only the code. Names are saved on your device.
+
+**Play vs Bot** runs entirely in your browser, even when the game server is
+unreachable. Choose Easy, Medium or Hard, your side and a board: Classic,
+Flower Garden, Forest or Bouquet. Hard chooses using exact game values;
+Medium and Easy mix those moves with random legal moves.
 
 ## How the game works
 
-The board is a set of red and blue edges standing on the ground. Players take
-turns: Red cuts one red edge, Blue cuts one blue edge. Anything no longer
-connected to the ground by some path of edges falls off. If it is your turn and
-you have no edge of your color left, you lose.
+Players take turns cutting an edge. In Red-Blue, Red cuts red edges and Blue
+cuts blue edges. In Green, either player can cut any edge. Anything no longer
+connected to the ground falls, including flower petals. If you have no legal
+move on your turn, you lose. Red moves first (the first player in Green).
 
 ## Requirements
 
@@ -23,15 +31,17 @@ npm install
 npm start
 ```
 
-Open <http://localhost:3000> in two browser windows. Click **Create Game** in
-one, then enter the code (or open the join link) in the other. Each tab holds
-its own seat, so two windows of the same browser can play each other. Reloading
-the tab or losing the connection keeps your seat for 60 seconds; closing the
-tab gives it up.
+Open <http://localhost:3000> in two browser windows. Enter names, click
+**Create Room** in one, then enter its code in the other and click **Join**.
+The host chooses settings and starts the game. Each tab has its own membership.
+Reloading or losing the connection keeps your place for 60 seconds. **Leave**
+returns to the menu immediately; leaving during play awards the other player
+the win. If the host leaves, the other member becomes host.
 
 ## Updating the live beta
 
-- **Server:** push to the branch Render tracks; Render redeploys it.
+- **Server:** push to `feature/hackenbush`, the branch Render tracks; Render redeploys it.
+  This beta branch stays separate from `main`; PR #1 remains open.
 - **Web page:** run `npm run deploy:client`. Needed only after changes in
   `public/`. It defaults to the beta server
   `https://hackenbush-server.onrender.com`.
@@ -84,13 +94,16 @@ Two ways to deploy:
 
 Use `https` URLs in both places; the client then connects with encrypted
 `wss://` WebSockets. Only the one origin in `ALLOWED_ORIGIN` may create or join
-games, so Vercel preview URLs are refused, and a misconfigured origin shows up
-in the lobby as "Cannot reach the server."
+rooms, so Vercel preview URLs are refused, and a misconfigured origin shows up
+in the menu as "Cannot reach the server."
 
 Limits and behavior to know:
 
-- At most 500 games exist at once. Past that, Create Game reports that the
+- At most 500 rooms exist at once. Past that, Create Game reports that the
   server is full.
+- Empty rooms expire after 10 minutes; joined rooms close after 30 minutes
+  without activity. Disconnected members are removed after 60 seconds, in the
+  lobby as well as during play. Rooms remain available for rematches.
 - All games live in memory. A restart, a redeploy, or a free-tier host going to
   sleep ends every game in progress; players see that the game no longer exists.
 - Players need the code to join a game, but there are no accounts and no rate

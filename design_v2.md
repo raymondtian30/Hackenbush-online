@@ -1,7 +1,7 @@
 # Hackenbush Online v2: Rooms, Names, Green Hackenbush, Big Boards, Bot
 
 *   **Author:** Raymond Tian
-*   **Status:** Draft
+*   **Status:** Implemented
 *   **Date:** 2026-11-15
 *   **Builds on:** [design_draft.md](./design_draft.md) (v1). Everything in
     v1 stays unless this document changes it. The protocol tables below are
