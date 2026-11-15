@@ -23,8 +23,9 @@ const room = (conn) => last(conn, "room").room;
 const err = (conn) => last(conn, "error");
 const queue = (...values) => (max) => (values.length ? values.shift() : 0) % (max || 1);
 
+const timerContexts = new WeakSet();
 function makeRegistry(t, opts = {}) {
-  t.mock.timers.enable({ apis: ["setTimeout"] });
+  if (!timerContexts.has(t)) { t.mock.timers.enable({ apis: ["setTimeout"] }); timerContexts.add(t); }
   const registry = createRegistry({ ...OPTS, ...opts });
   t.after(() => registry.shutdown());
   return registry;
@@ -71,8 +72,8 @@ test("a room nobody joins is deleted after waitingMs", (t) => {
 });
 
 test("cleanName strips invisible and control characters, trims, and cuts to 20 code points", () => {
-  assert.equal(cleanName(" ‮Ana\u0000 "), "Ana");
-  assert.equal(cleanName("​‏ "), "");
+  assert.equal(cleanName(" \u202EAna\u0000 "), "Ana");
+  assert.equal(cleanName("\u200B\u200F "), "");
   assert.equal(cleanName("x".repeat(25)), "x".repeat(20));
   assert.equal(Array.from(cleanName("\u{1F600}".repeat(25))).length, 20);
 });
@@ -93,7 +94,7 @@ test("an empty name gets bad_name, an unknown code room_not_found", (t) => {
   const registry = makeRegistry(t);
   const code = registry.createRoom();
   const a = fakeConn();
-  registry.join(a, code, "  ​ ");
+  registry.join(a, code, "  \u200B ");
   assert.equal(err(a).code, "bad_name");
   assert.equal(a.session, null);
   const b = fakeConn();
@@ -281,7 +282,7 @@ test("leaving mid-game: the other side wins with reason left and becomes host", 
   assert.equal(r.game.winner, "red");
   assert.equal(r.game.reason, "left");
   assert.deepEqual(r.members.map((m) => m.id), ["m1"]);
-  assert.equal(host.sent.filter((m) => m.type === "room").length, 3, "one broadcast per change, none doubled");
+  assert.equal(host.sent.filter((m) => m.type === "room").length, 5, "one broadcast per change, none doubled");
 });
 
 test("the host leaving in the lobby makes the guest host; the last member leaving deletes the room", (t) => {

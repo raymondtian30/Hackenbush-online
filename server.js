@@ -1,11 +1,13 @@
 // HTTP (static files, POST /create-game) and WebSocket wiring.
-// All game and room rules live in server/game.js and server/rooms.js.
+// All game and room rules live in public/lib/game.js and server/rooms.js.
 
 const http = require("node:http");
 const fs = require("node:fs");
 const path = require("node:path");
 const { WebSocketServer } = require("ws");
 const { createRegistry, RoomCapError } = require("./server/rooms");
+
+const { BOARDS } = require("./public/lib/boards.js");
 
 const PUBLIC_DIR = path.join(__dirname, "public");
 const HEARTBEAT_MS = 30000;
@@ -151,9 +153,22 @@ function createApp(options = {}) {
       if (msg === null || typeof msg !== "object" || Array.isArray(msg)) return bad();
       if (msg.type === "join") {
         const token = msg.token ?? undefined;
-        if (typeof msg.code !== "string" || (token !== undefined && typeof token !== "string")) return bad();
-        return registry.join(conn, msg.code, token);
+        if (typeof msg.code !== "string" || typeof msg.name !== "string" || (token !== undefined && typeof token !== "string")) return bad();
+        return registry.join(conn, msg.code, msg.name, token);
       }
+      if (msg.type === "settings") {
+        const patch = {};
+        const choices = { mode: ["redblue", "green"], board: [...BOARDS.map(b => b.id), "random"], redPlayer: ["host", "guest", "random"] };
+        for (const [key, values] of Object.entries(choices)) {
+          if (Object.hasOwn(msg, key)) {
+            if (!values.includes(msg[key])) return bad();
+            patch[key] = msg[key];
+          }
+        }
+        return registry.updateSettings(conn, patch);
+      }
+      if (msg.type === "start") return registry.start(conn);
+      if (msg.type === "leave") return registry.leave(conn);
       if (msg.type === "cut") {
         if (!Number.isInteger(msg.edgeId)) return bad();
         return registry.cut(conn, msg.edgeId);

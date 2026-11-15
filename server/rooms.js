@@ -1,171 +1,141 @@
-// Room registry: codes, seats, tokens, timers, cleanup. No network code.
-// A conn is any object with send(obj), close(code, reason) and a `session`
-// property the registry sets to {room, role} or null.
-
-const crypto = require("node:crypto");
-const { defaultBoard } = require("./board");
-const { validateBoard, newGame, startGame, applyCut, forfeit } = require("./game");
-
-const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-const CODE_LENGTH = 5;
-const ROLES = ["red", "blue"];
-
+// Room membership, host settings and lifecycle; no network code.
+const crypto = require('node:crypto');
+const { newGame, applyCut, forfeit } = require('../public/lib/game.js');
+const { BOARDS, makeBoard } = require('../public/lib/boards.js');
+const ALPHABET = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 class RoomCapError extends Error {
-  constructor() {
-    super("Room limit reached");
-    this.name = "RoomCapError";
-  }
+  constructor() { super('Room limit reached'); this.name = 'RoomCapError'; }
 }
-
+function cleanName(s) {
+  return Array.from(s.replace(/[\u0000-\u001F\u007F-\u009F\u200B-\u200F\u202A-\u202E\u2066-\u2069\uFEFF]/g, '').trim()).slice(0, 20).join('');
+}
 function createRegistry(options = {}) {
-  const { maxRooms = 500, waitingMs = 600000, graceMs = 60000, finishedMs = 60000 } = options;
-  validateBoard(defaultBoard);
+  const { maxRooms = 500, waitingMs = 600000, graceMs = 60000, idleMs = 1800000, rng = crypto.randomInt } = options;
   const rooms = new Map();
-
-  function newCode() {
-    let code;
-    do {
-      code = "";
-      for (let i = 0; i < CODE_LENGTH; i++) code += ALPHABET[crypto.randomInt(ALPHABET.length)];
-    } while (rooms.has(code));
-    return code;
+  const error = (c, code, message) => c.send({ type: 'error', code, message });
+  function memberOf(c) {
+    const s = c.session;
+    return s && !s.room.deleted ? s.room.members.find(m => m.id === s.memberId && m.conn === c) : null;
   }
-
-  function sendError(conn, code, message) {
-    conn.send({ type: "error", code, message });
+  function snapshot(r) {
+    return { code: r.code, status: r.status, hostId: r.hostId, gameNumber: r.gameNumber,
+      members: r.members.map(m => ({ id: m.id, name: m.name, connected: Boolean(m.conn) })), settings: r.settings, game: r.game };
   }
-
-  function players(room) {
-    const out = {};
-    for (const role of ROLES) out[role] = { connected: Boolean(room.seats[role]?.conn) };
-    return out;
-  }
-
-  function broadcast(room, lastMove) {
-    const msg = { type: "state", game: room.game, players: players(room) };
+  function broadcast(r, lastMove) {
+    const msg = { type: 'room', room: snapshot(r) };
     if (lastMove) msg.lastMove = lastMove;
-    for (const role of ROLES) room.seats[role]?.conn?.send(msg);
+    for (const m of r.members) m.conn?.send(msg);
   }
-
-  function ownsSeat(conn) {
-    const s = conn.session;
-    return Boolean(s && !s.room.deleted && s.room.seats[s.role]?.conn === conn);
-  }
-
-  function startGrace(room, role) {
-    const seat = room.seats[role];
-    clearTimeout(seat.graceTimer);
-    seat.graceTimer = setTimeout(() => {
-      seat.graceTimer = null;
-      forfeit(room.game, role);
-      finish(room);
-      broadcast(room);
-    }, graceMs);
-  }
-
-  function finish(room) {
-    for (const role of ROLES) {
-      const seat = room.seats[role];
-      if (seat) {
-        clearTimeout(seat.graceTimer);
-        seat.graceTimer = null;
-      }
+  function deleteRoom(r, code = 1000) {
+    if (r.deleted) return;
+    r.deleted = true;
+    clearTimeout(r.waitingTimer); clearTimeout(r.idleTimer);
+    for (const m of r.members) {
+      clearTimeout(m.graceTimer);
+      if (m.conn) { m.conn.session = null; m.conn.close(code, 'room closed'); }
     }
-    room.finishedTimer = setTimeout(() => deleteRoom(room), finishedMs);
+    rooms.delete(r.code);
   }
-
-  function deleteRoom(room) {
-    if (room.deleted) return;
-    room.deleted = true;
-    clearTimeout(room.waitingTimer);
-    clearTimeout(room.finishedTimer);
-    for (const role of ROLES) {
-      const seat = room.seats[role];
-      if (!seat) continue;
-      clearTimeout(seat.graceTimer);
-      if (seat.conn) {
-        const conn = seat.conn;
-        seat.conn = null;
-        conn.session = null;
-        conn.close(1000, "room closed");
-      }
-    }
-    rooms.delete(room.code);
+  function resetIdle(r) {
+    if (r.deleted) return;
+    clearTimeout(r.idleTimer);
+    r.idleTimer = setTimeout(() => { if (!r.deleted) deleteRoom(r, 4001); }, idleMs);
   }
-
+  function success(r, lastMove) { if (!r.deleted) { resetIdle(r); broadcast(r, lastMove); } }
   function createRoom() {
     if (rooms.size >= maxRooms) throw new RoomCapError();
-    const code = newCode();
-    const room = {
-      code,
-      game: newGame(defaultBoard),
-      seats: { red: null, blue: null },
-      waitingTimer: null,
-      finishedTimer: null,
-      deleted: false,
-    };
-    room.waitingTimer = setTimeout(() => deleteRoom(room), waitingMs);
-    rooms.set(code, room);
+    let code;
+    do { code = Array.from({ length: 5 }, () => ALPHABET[crypto.randomInt(ALPHABET.length)]).join(''); } while (rooms.has(code));
+    const r = { code, status: 'lobby', hostId: null, members: [], nextMemberNum: 1,
+      settings: { mode: 'redblue', board: 'random', redPlayer: 'random' }, game: null, gameNumber: 0,
+      waitingTimer: null, idleTimer: null, deleted: false };
+    rooms.set(code, r);
+    r.waitingTimer = setTimeout(() => { if (!r.deleted) deleteRoom(r); }, waitingMs);
+    resetIdle(r);
     return code;
   }
-
-  function join(conn, code, token) {
-    if (conn.session) return sendError(conn, "bad_message", "Already joined.");
-    const room = rooms.get(String(code).toUpperCase());
-    if (!room) return sendError(conn, "room_not_found", "No game with that code.");
-
-    let role = token === undefined ? null : ROLES.find((r) => room.seats[r]?.token === token) || null;
-    if (role) {
-      const seat = room.seats[role];
-      if (seat.conn) {
-        const old = seat.conn;
-        old.session = null;
-        old.close(4000, "replaced");
-      }
-      clearTimeout(seat.graceTimer);
-      seat.graceTimer = null;
-      seat.conn = conn;
+  function join(c, code, name, token) {
+    if (c.session) return error(c, 'bad_message', 'Already joined.');
+    name = cleanName(name);
+    if (!name) return error(c, 'bad_name', 'Enter a name.');
+    const r = rooms.get(code.toUpperCase());
+    if (!r) return error(c, 'room_not_found', 'No game with that code.');
+    let m = r.members.find(m => m.token === token);
+    if (m) {
+      if (m.conn) { m.conn.session = null; m.conn.close(4000, 'replaced'); }
+      clearTimeout(m.graceTimer); m.graceTimer = null; m.conn = c; m.name = name;
     } else {
-      role = ROLES.find((r) => room.seats[r] === null);
-      if (!role) return sendError(conn, "room_full", "That game already has two players.");
-      room.seats[role] = { token: crypto.randomBytes(16).toString("hex"), conn, graceTimer: null };
+      if (r.members.length === 2) return error(c, 'room_full', 'That room already has two players.');
+      m = { id: 'm' + r.nextMemberNum++, name, token: crypto.randomBytes(16).toString('hex'), conn: c, graceTimer: null };
+      r.members.push(m);
     }
-
-    conn.session = { room, role };
-    conn.send({ type: "joined", code: room.code, role, token: room.seats[role].token });
-
-    if (room.seats.red && room.seats.blue && room.game.status === "waiting") {
-      clearTimeout(room.waitingTimer);
-      room.waitingTimer = null;
-      startGame(room.game);
-      for (const r of ROLES) if (!room.seats[r].conn) startGrace(room, r);
-    }
-    broadcast(room);
+    clearTimeout(r.waitingTimer); r.waitingTimer = null;
+    if (r.hostId === null) r.hostId = m.id;
+    c.session = { room: r, memberId: m.id };
+    c.send({ type: 'joined', code: r.code, memberId: m.id, token: m.token });
+    success(r);
   }
-
-  function cut(conn, edgeId) {
-    if (!ownsSeat(conn)) return sendError(conn, "not_joined", "Join a game first.");
-    const { room, role } = conn.session;
-    const result = applyCut(room.game, role, edgeId);
-    if (!result.ok) return sendError(conn, result.code, result.message);
-    broadcast(room, { edgeId, fell: result.fell });
-    if (room.game.status === "finished") finish(room);
+  function joined(c) {
+    const m = memberOf(c);
+    if (!m) error(c, 'not_joined', 'Join a room first.');
+    return m;
   }
-
-  function disconnect(conn) {
-    if (!ownsSeat(conn)) return;
-    const { room, role } = conn.session;
-    room.seats[role].conn = null;
-    conn.session = null;
-    if (room.game.status === "playing") startGrace(room, role);
-    broadcast(room);
+  function hostLobby(c) {
+    if (!joined(c)) return null;
+    const r = c.session.room;
+    if (r.hostId !== c.session.memberId) { error(c, 'not_host', 'Only the host can do that.'); return null; }
+    if (r.status !== 'lobby') { error(c, 'not_in_lobby', 'A game is in progress.'); return null; }
+    return r;
   }
-
-  function shutdown() {
-    for (const room of [...rooms.values()]) deleteRoom(room);
+  function updateSettings(c, patch) {
+    const r = hostLobby(c); if (!r) return;
+    r.settings = { ...r.settings, ...patch }; success(r);
   }
-
-  return { createRoom, join, cut, disconnect, shutdown };
+  function start(c) {
+    const r = hostLobby(c); if (!r) return;
+    if (r.members.length !== 2 || r.members.some(m => !m.conn)) return error(c, 'not_ready', 'Waiting for a second player.');
+    const board = r.settings.board === 'random' ? BOARDS[rng(BOARDS.length)].id : r.settings.board;
+    const host = r.members.find(m => m.id === r.hostId), guest = r.members.find(m => m !== host);
+    const red = r.settings.redPlayer === 'host' ? host : r.settings.redPlayer === 'guest' ? guest : rng(2) === 0 ? host : guest;
+    const blue = red === host ? guest : host;
+    const seed = rng(2 ** 31);
+    r.game = newGame(makeBoard(board, r.settings.mode, seed), r.settings.mode,
+      { red: { id: red.id, name: red.name }, blue: { id: blue.id, name: blue.name } });
+    r.gameNumber++; r.status = 'playing'; success(r);
+  }
+  const sideOf = (r, id) => ['red', 'blue'].find(s => r.game.sides[s].id === id);
+  function cut(c, edgeId) {
+    const m = joined(c); if (!m) return;
+    const r = c.session.room;
+    if (r.status !== 'playing') return error(c, 'illegal_move', 'The game is not in progress.');
+    const result = applyCut(r.game, sideOf(r, m.id), edgeId);
+    if (!result.ok) return error(c, result.code, result.message);
+    if (r.game.status === 'finished') r.status = 'lobby';
+    success(r, { edgeId, fell: result.fell });
+  }
+  function removeMember(r, id, reason) {
+    if (r.deleted) return;
+    const m = r.members.find(m => m.id === id); if (!m) return;
+    if (r.status === 'playing') { forfeit(r.game, sideOf(r, id), reason); r.status = 'lobby'; }
+    clearTimeout(m.graceTimer);
+    r.members = r.members.filter(member => member.id !== id);
+    // Filter by id: member ids are monotonic for the lifetime of the room.
+    if (r.hostId === id) r.hostId = r.members[0]?.id ?? null;
+    if (!r.members.length) deleteRoom(r); else broadcast(r);
+  }
+  function leave(c) {
+    const m = joined(c); if (!m) return;
+    const r = c.session.room; c.session = null; c.send({ type: 'left' });
+    removeMember(r, m.id, 'left'); resetIdle(r);
+  }
+  function disconnect(c) {
+    const m = memberOf(c); if (!m) return;
+    const r = c.session.room; c.session = null; m.conn = null;
+    clearTimeout(m.graceTimer);
+    m.graceTimer = setTimeout(() => { if (!r.deleted) removeMember(r, m.id, 'timeout'); }, graceMs);
+    success(r);
+  }
+  function shutdown() { for (const r of rooms.values()) deleteRoom(r); }
+  return { createRoom, join, updateSettings, start, cut, leave, disconnect, shutdown };
 }
-
-module.exports = { createRegistry, RoomCapError };
+module.exports = { createRegistry, RoomCapError, cleanName };

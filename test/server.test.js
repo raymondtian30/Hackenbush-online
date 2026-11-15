@@ -74,21 +74,30 @@ test("two sockets play R0, B4, R9 and both see Red win", async (t) => {
   const { port } = await startApp(t);
   const { code } = (await createGame(port)).json;
   const red = await openSocket(port);
-  red.ws.send(JSON.stringify({ type: "join", code }));
-  assert.equal((await red.next((m) => m.type === "joined")).role, "red");
+  red.ws.send(JSON.stringify({ type: "join", code, name: "Ana" }));
+  assert.equal((await red.next((m) => m.type === "joined")).memberId, "m1");
   const blue = await openSocket(port);
-  blue.ws.send(JSON.stringify({ type: "join", code, token: null }));
-  assert.equal((await blue.next((m) => m.type === "joined")).role, "blue");
+  blue.ws.send(JSON.stringify({ type: "join", code, name: "Ben", token: null }));
+  assert.equal((await blue.next((m) => m.type === "joined")).memberId, "m2");
 
+  red.ws.send(JSON.stringify({ type: "settings", board: "classic", redPlayer: "host" }));
+  red.ws.send(JSON.stringify({ type: "start" }));
+  await blue.next(m => m.type === "room" && m.room.status === "playing");
   const moves = [[red, 0], [blue, 4], [red, 9]];
   for (const [p, edgeId] of moves) {
     p.ws.send(JSON.stringify({ type: "cut", edgeId }));
-    await red.next((m) => m.type === "state" && m.lastMove?.edgeId === edgeId);
+    await red.next((m) => m.type === "room" && m.lastMove?.edgeId === edgeId);
   }
   for (const p of [red, blue]) {
-    const s = await p.next((m) => m.type === "state" && m.game.status === "finished");
-    assert.equal(s.game.winner, "red");
+    const s = await p.next((m) => m.type === "room" && m.room.game?.status === "finished");
+    assert.equal(s.room.game.winner, "red");
   }
+  red.ws.send(JSON.stringify({ type: "start" }));
+  await blue.next(m => m.type === "room" && m.room.gameNumber === 2);
+  red.ws.send(JSON.stringify({ type: "leave" }));
+  await red.next(m => m.type === "left");
+  const left = await blue.next(m => m.type === "room" && m.room.game?.reason === "left");
+  assert.equal(left.room.hostId, "m2");
   red.ws.close();
   blue.ws.close();
 });
@@ -105,7 +114,7 @@ test("a message over 1 KB closes the socket with 1009 and the server keeps servi
 test("malformed messages get bad_message", async (t) => {
   const { port } = await startApp(t);
   const s = await openSocket(port);
-  for (const raw of ["not json", "null", "[]", '{"type":"dance"}', '{"type":"join"}', '{"type":"cut","edgeId":"1"}', '{"type":"join","code":"ABCDE","token":5}']) {
+  for (const raw of ["not json", "null", "[]", '{"type":"settings","mode":"purple"}', '{"type":"join","code":"ABCDE"}', '{"type":"dance"}', '{"type":"join"}', '{"type":"cut","edgeId":"1"}', '{"type":"join","code":"ABCDE","token":5}']) {
     s.msgs.length = 0;
     s.ws.send(raw);
     const m = await s.next((x) => x.type === "error");
