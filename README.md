@@ -29,6 +29,13 @@ its own seat, so two windows of the same browser can play each other. Reloading
 the tab or losing the connection keeps your seat for 60 seconds; closing the
 tab gives it up.
 
+## Updating the live beta
+
+- **Server:** push to the branch Render tracks; Render redeploys it.
+- **Web page:** run `npm run deploy:client`. Needed only after changes in
+  `public/`. It defaults to the beta server
+  `https://hackenbush-server.onrender.com`.
+
 ## Tests
 
 ```sh
@@ -59,19 +66,18 @@ Two ways to deploy:
    1. In Render, create a **Blueprint** from this repository (`render.yaml`).
       It creates the `hackenbush-server` web service. Note its URL, for
       example `https://hackenbush-server.onrender.com`.
-   2. Build a copy of the client that points at that URL, and deploy the copy
-      to Vercel as a static site:
+   2. Deploy the web page to Vercel (log in once with `npx vercel login`):
 
       ```sh
-      rm -rf /tmp/hackenbush-client && cp -r public /tmp/hackenbush-client
-      SERVER_URL=https://hackenbush-server.onrender.com \
-        node scripts/write-config.js /tmp/hackenbush-client/config.js
-      cd /tmp/hackenbush-client && npx vercel link --yes --project hackenbush-online
-      npx vercel deploy --prod
+      SERVER_URL=https://hackenbush-server.onrender.com npm run deploy:client
       ```
 
-      The repository's own `public/config.js` stays empty, so local runs are
-      unaffected. (Deploy the copy, not the repository root: Vercel reads
+      This copies `public/` to a temporary folder, writes the server URL into
+      the copy's `config.js`, and deploys the copy to the Vercel project
+      `hackenbush-online` (change it with `VERCEL_PROJECT`). The repository's
+      own `public/config.js` stays empty, so local runs are unaffected. Add
+      `-- --dry-run` to build the copy without deploying. (The copy is
+      deployed rather than the repository root because Vercel reads
       `render.yaml` as a Node service and refuses a static build next to it.)
    3. Back in Render, set `ALLOWED_ORIGIN` to the Vercel site's origin, for
       example `https://hackenbush-online.vercel.app`, and let it redeploy.
