@@ -10,7 +10,7 @@ body {
 }
 
 main {
-  max-width: 640px;
+  max-width: 960px;
   margin: 0 auto;
   padding: 24px 16px;
 }
@@ -43,7 +43,7 @@ button:hover { background: #eee; }
   border-radius: 6px;
 }
 
-#lobby-error { color: #b00020; min-height: 1.4em; }
+#menu-error, #room-error { color: #b00020; min-height: 1.4em; }
 
 .game-header {
   display: flex;
@@ -100,3 +100,16 @@ button:hover { background: #eee; }
 }
 
 #result { font-size: 2rem; font-weight: 700; margin: 0 0 16px; }
+
+#board .green .stroke { stroke: #2e7d32; }
+path.stroke, path.hit { fill: none; }
+.settings { display: grid; gap: 16px; margin: 24px 0; max-width: 380px; }
+label { display: grid; gap: 6px; font-weight: 600; }
+input, select { font: inherit; padding: 10px; border: 1px solid #888; border-radius: 6px; background: white; color: #222; }
+select:disabled { opacity: 1; background: #eee; }
+button:disabled { opacity: .5; cursor: default; }
+#name-input { max-width: 320px; }
+#play-bot, #leave-game { margin-top: 20px; }
+#members { padding-left: 24px; line-height: 1.8; }
+#banner { padding: 16px; text-align: center; gap: 8px; }
+@media (max-width: 600px) { #result { font-size: 1.3rem; } main { padding-top: 16px; } }

@@ -9,34 +9,62 @@
 </head>
 <body>
   <main>
-    <section id="lobby">
+    <section id="menu">
       <h1>Hackenbush Online</h1>
-      <p class="intro">Red-Blue Hackenbush for two players. Cut an edge of your color; anything no longer connected to the ground falls. If you cannot move on your turn, you lose.</p>
-      <button id="create" type="button">Create Game</button>
+      <p class="intro">Cut an edge; anything no longer connected to the ground falls. In Red-Blue, cut your color. In Green, cut any edge. If you cannot move on your turn, you lose.</p>
+      <label>Your name <input id="name-input" maxlength="20" autocomplete="nickname" placeholder="Name"></label>
+      <button id="create" type="button">Create Room</button>
       <div class="join-row">
-        <input id="code-input" maxlength="5" autocomplete="off" spellcheck="false" placeholder="CODE" aria-label="Game code">
-        <button id="join" type="button">Join Game</button>
+        <input id="code-input" maxlength="5" autocomplete="off" spellcheck="false" placeholder="CODE" aria-label="Room code">
+        <button id="join" type="button">Join</button>
       </div>
-      <p id="lobby-error" role="alert"></p>
+      <button id="play-bot" type="button">Play vs Bot</button>
+      <p id="menu-error" role="alert"></p>
     </section>
-
+    <section id="room" hidden>
+      <h1>Room <span id="room-code"></span></h1>
+      <button id="copy-code" type="button">Copy code</button>
+      <input id="copy-fallback" readonly hidden aria-label="Room code to copy">
+      <ul id="members"></ul>
+      <div class="settings">
+        <label>Mode <select id="setting-mode"><option value="redblue">Red-Blue</option><option value="green">Green</option></select></label>
+        <label>Board <select id="setting-board"></select></label>
+        <label>Starting side <select id="setting-red"><option value="host">Host plays Red</option><option value="guest">Guest plays Red</option><option value="random">Random</option></select></label>
+      </div>
+      <p id="last-result" aria-live="polite"></p>
+      <button id="start" type="button">Start</button>
+      <button id="leave-room" type="button">Leave</button>
+      <p id="room-error" role="alert"></p>
+    </section>
     <section id="game" hidden>
-      <header class="game-header">
-        <span>Game <strong id="room-code"></strong></span>
-        <button id="copy-link" type="button">Copy join link</button>
-        <span id="role"></span>
-      </header>
+      <header class="game-header"><strong id="players"></strong></header>
       <p id="status" aria-live="polite"></p>
       <div class="board-wrap">
-        <svg id="board" viewBox="0 0 600 400" role="group" aria-label="Hackenbush board"></svg>
+        <svg id="board" role="group" aria-label="Hackenbush board"></svg>
         <div id="banner" role="status" hidden>
           <p id="result"></p>
-          <button id="back" type="button">Back to lobby</button>
+          <button id="play-again" type="button">Play Again</button>
+          <button id="banner-menu" type="button">Menu</button>
         </div>
       </div>
+      <button id="leave-game" type="button">Leave</button>
+    </section>
+    <section id="bot-setup" hidden>
+      <h1>Play vs Bot</h1>
+      <div class="settings">
+        <label>Mode <select id="bot-mode"><option value="redblue">Red-Blue</option><option value="green">Green</option></select></label>
+        <label>Board <select id="bot-board"></select></label>
+        <label>Difficulty <select id="bot-difficulty"><option value="easy">Easy</option><option value="medium">Medium</option><option value="hard">Hard</option></select></label>
+        <label>Your side <select id="bot-side"><option value="human-first-or-red">I play Red</option><option value="bot-first-or-blue">I play Blue</option><option value="random">Random</option></select></label>
+      </div>
+      <button id="bot-start" type="button">Start</button>
+      <button id="bot-back" type="button">Back</button>
     </section>
   </main>
   <script src="config.js"></script>
+  <script src="lib/game.js"></script>
+  <script src="lib/boards.js"></script>
+  <script src="lib/bot.js"></script>
   <script src="render.js"></script>
   <script src="app.js"></script>
 </body>

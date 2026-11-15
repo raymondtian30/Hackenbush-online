@@ -1,312 +1,252 @@
-// Lobby, socket handling, screen switching and reconnect.
+// Screens, local bot games and reconnecting online rooms.
 (function () {
-  const $ = (id) => document.getElementById(id);
-  const ui = {
-    lobby: $("lobby"),
-    game: $("game"),
-    create: $("create"),
-    codeInput: $("code-input"),
-    join: $("join"),
-    lobbyError: $("lobby-error"),
-    roomCode: $("room-code"),
-    copyLink: $("copy-link"),
-    role: $("role"),
-    status: $("status"),
-    board: $("board"),
-    banner: $("banner"),
-    result: $("result"),
-    back: $("back"),
-  };
-
-  // The server sends a "ping" message every 30 s. Hearing nothing for longer
-  // than this means the connection died silently (network switch, sleep).
-  const SILENCE_MS = 45000;
-
-  const GONE_TEXT =
-    "This game no longer exists on the server. It may have ended, or the server may have restarted.";
-
-  const base = (window.SERVER_URL || "").replace(/\/+$/, "");
-  const socketUrl = base
-    ? base.replace(/^http/, "ws") + "/ws"
-    : (location.protocol === "https:" ? "wss://" : "ws://") + location.host + "/ws";
-
-  const state = {
-    code: null,
-    role: null,
-    socket: null,
-    joinedOnSocket: false,
-    lastState: null,
-    retryMs: 1000,
-    retryTimer: null,
-    flashTimer: null,
-    leaving: true,
-    everJoined: false,
-    lastHeard: 0,
-  };
-
-  const tokenKey = (code) => "hackenbush:" + code;
-  const getToken = (code) => sessionStorage.getItem(tokenKey(code));
-  const capitalize = (s) => s.charAt(0).toUpperCase() + s.slice(1);
-  const joinLink = () => location.origin + location.pathname + "?code=" + state.code;
-
-  function send(obj) {
-    if (state.socket && state.socket.readyState === WebSocket.OPEN) state.socket.send(JSON.stringify(obj));
+  'use strict';
+  const $ = id => document.getElementById(id);
+  const Game = window.HackenbushGame, Boards = window.HackenbushBoards, Bot = window.HackenbushBot;
+  const base = (window.SERVER_URL || '').replace(/\/+$/, '');
+  const socketUrl = base ? base.replace(/^http/, 'ws') + '/ws' : (location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws';
+  const GONE_TEXT = 'This game no longer exists on the server. It may have ended, or the server may have restarted.';
+  const state = { screen: 'menu', mode: 'online', name: '', code: null, memberId: null, socket: null,
+    joinedOnSocket: false, everJoined: false, inRoom: false, retryMs: 1000, retryTimer: null,
+    flashTimer: null, bannerTimer: null, lastHeard: 0, leaving: true, room: null,
+    prevStatus: null, gameNumber: null, bot: null };
+  const tokenKey = code => 'hackenbush:' + code;
+  const getToken = code => sessionStorage.getItem(tokenKey(code));
+  const removeToken = () => { if (state.code) sessionStorage.removeItem(tokenKey(state.code)); };
+  function show(screen) {
+    state.screen = screen;
+    for (const id of ['menu', 'room', 'game', 'bot-setup']) $(id).hidden = id !== screen;
   }
-
-  function statusText() {
-    const s = state.lastState;
-    if (!s) return "Connecting...";
-    const game = s.game;
-    if (game.status === "waiting") {
-      return "Waiting for an opponent. Share code " + state.code + " or the join link.";
-    }
-    if (game.status === "finished") return "Game over.";
-    const opponent = state.role === "red" ? "blue" : "red";
-    if (!s.players[opponent].connected) return "Opponent disconnected. They have 60 seconds to return.";
-    return game.turn === state.role ? "Your turn" : "Opponent's turn";
-  }
-
-  function showStatus() {
-    clearTimeout(state.flashTimer);
-    state.flashTimer = null;
-    ui.status.textContent = statusText();
-  }
-
-  function flash(text, ms) {
-    clearTimeout(state.flashTimer);
-    ui.status.textContent = text;
-    state.flashTimer = setTimeout(showStatus, ms);
-  }
-
-  function showLobby(error) {
-    ui.game.hidden = true;
-    ui.banner.hidden = true;
-    ui.lobby.hidden = false;
-    ui.lobbyError.textContent = error || "";
-  }
-
-  function leaveGame(error) {
-    state.leaving = true;
-    clearTimeout(state.retryTimer);
-    clearTimeout(state.flashTimer);
-    state.flashTimer = null;
-    closeSocket();
-    Render.reset();
-    state.lastState = null;
-    history.replaceState(null, "", location.pathname);
-    showLobby(error);
-  }
-
   function closeSocket() {
-    const socket = state.socket;
-    state.socket = null;
-    if (socket) socket.close();
+    const s = state.socket; state.socket = null;
+    if (s) s.close();
   }
-
-  function startGame(code) {
-    clearTimeout(state.retryTimer);
-    clearTimeout(state.flashTimer);
-    state.flashTimer = null;
-    closeSocket();
-    state.everJoined = false;
-    ui.status.textContent = "";
-    state.code = code;
-    state.role = null;
-    state.leaving = false;
-    state.retryMs = 1000;
-    state.lastState = null;
-    ui.lobbyError.textContent = "";
-    Render.reset();
-    connect();
+  function goToMenu(error) {
+    state.leaving = true;
+    clearTimeout(state.retryTimer); clearTimeout(state.flashTimer); clearTimeout(state.bannerTimer);
+    clearTimeout(state.bot?.timer);
+    state.retryTimer = state.flashTimer = state.bannerTimer = null;
+    closeSocket(); Render.reset(); state.inRoom = false;
+    state.room = state.prevStatus = state.gameNumber = state.bot = null;
+    $('banner').hidden = true;
+    history.replaceState(null, '', location.pathname);
+    show('menu'); $('menu-error').textContent = error || '';
   }
-
+  function requireName() {
+    state.name = $('name-input').value.trim();
+    if (!state.name) { $('menu-error').textContent = 'Enter your name first.'; return false; }
+    $('menu-error').textContent = ''; return true;
+  }
+  function send(msg) {
+    if (state.socket?.readyState === WebSocket.OPEN) state.socket.send(JSON.stringify(msg));
+  }
+  function mySide(game) { return ['red', 'blue'].find(s => game.sides[s].id === state.memberId); }
+  function resultText(game) {
+    const win = game.sides[game.winner], lose = game.sides[Game.otherColor(game.winner)];
+    let text = win.name + ' won the game!';
+    if (game.reason === 'left') text += ` (${lose.name} left)`;
+    if (game.reason === 'timeout') text += ` (${lose.name} lost connection)`;
+    return text;
+  }
+  function statusText() {
+    const game = state.mode === 'bot' ? state.bot?.game : state.room?.game;
+    if (!game) return 'Connecting...';
+    if (game.status === 'finished') return 'Game over.';
+    const side = state.mode === 'bot' ? state.bot.humanSide : mySide(game);
+    const opponent = game.sides[Game.otherColor(side)];
+    if (state.mode === 'online' && state.room.members.some(m => m.id === opponent.id && !m.connected)) {
+      return opponent.name + ' disconnected. They have 60 seconds to return.';
+    }
+    return game.turn === side ? 'Your turn' : game.sides[game.turn].name + "'s turn";
+  }
+  function showStatus() { clearTimeout(state.flashTimer); state.flashTimer = null; $('status').textContent = statusText(); }
+  function flash(text) {
+    clearTimeout(state.flashTimer); $('status').textContent = text;
+    state.flashTimer = setTimeout(showStatus, 3000);
+  }
+  function drawGame(game, lastMove, side) {
+    const { red, blue } = game.sides;
+    $('players').textContent = game.mode === 'green' ? `${red.name} vs ${blue.name}` : `${red.name} (Red) vs ${blue.name} (Blue)`;
+    $('leave-game').textContent = state.mode === 'bot' ? 'Menu' : 'Leave';
+    $('play-again').hidden = $('banner-menu').hidden = state.mode !== 'bot';
+    Render.update(game, lastMove, side); showStatus();
+  }
+  function labels(modeId, sideId, online) {
+    const green = $(modeId).value === 'green';
+    const captions = online ? (green ? ['Host goes first', 'Guest goes first'] : ['Host plays Red', 'Guest plays Red']) :
+      (green ? ['I go first', 'Bot goes first'] : ['I play Red', 'I play Blue']);
+    Array.from($(sideId).options).forEach((o, i) => { o.textContent = captions[i] || 'Random'; });
+  }
+  function refreshRoom() {
+    const r = state.room; if (!r) return;
+    $('room-code').textContent = r.code;
+    $('members').replaceChildren(...r.members.map(m => {
+      const li = document.createElement('li');
+      li.textContent = m.name + (m.id === r.hostId ? ' (host)' : '') + (m.connected ? '' : ' — disconnected'); return li;
+    }));
+    const host = r.hostId === state.memberId;
+    for (const [field, id] of Object.entries({ mode: 'setting-mode', board: 'setting-board', redPlayer: 'setting-red' })) {
+      $(id).value = r.settings[field]; $(id).disabled = !host;
+    }
+    labels('setting-mode', 'setting-red', true);
+    $('start').hidden = !host;
+    $('start').disabled = r.members.length !== 2 || r.members.some(m => !m.connected);
+    $('last-result').textContent = r.game?.status === 'finished' ? resultText(r.game) : '';
+  }
+  function onRoom(msg) {
+    const r = msg.room; state.room = r; refreshRoom();
+    if (r.gameNumber !== state.gameNumber) { Render.reset(); state.gameNumber = r.gameNumber; }
+    if (r.status === 'playing') {
+      clearTimeout(state.bannerTimer); state.bannerTimer = null; $('banner').hidden = true;
+      show('game'); drawGame(r.game, msg.lastMove, mySide(r.game));
+    } else if (r.game?.status === 'finished' && state.prevStatus === 'playing') {
+      show('game'); drawGame(r.game, msg.lastMove, mySide(r.game));
+      $('result').textContent = resultText(r.game); $('banner').hidden = false;
+      clearTimeout(state.bannerTimer);
+      state.bannerTimer = setTimeout(() => {
+        state.bannerTimer = null; $('banner').hidden = true; refreshRoom(); show('room');
+      }, 3000);
+    } else if (!state.bannerTimer) { $('banner').hidden = true; show('room'); }
+    state.prevStatus = r.status;
+  }
   function scheduleReconnect() {
-    ui.status.textContent = "Reconnecting...";
-    clearTimeout(state.retryTimer);
-    state.retryTimer = setTimeout(connect, state.retryMs);
+    if (!state.inRoom) return;
+    if (state.screen === 'game') $('status').textContent = 'Reconnecting...';
+    else $('room-error').textContent = 'Reconnecting...';
+    clearTimeout(state.retryTimer); state.retryTimer = setTimeout(connect, state.retryMs);
     state.retryMs = Math.min(state.retryMs * 2, 5000);
   }
-
-  // Drop a socket that may be dead without waiting for the browser to notice.
-  function forceReconnect() {
-    closeSocket();
-    scheduleReconnect();
-  }
-
-  function inLiveGame() {
-    const finished = state.lastState && state.lastState.game.status === "finished";
-    return !state.leaving && state.everJoined && !finished;
-  }
-
-  setInterval(() => {
-    const socket = state.socket;
-    if (!socket || socket.readyState !== WebSocket.OPEN || !inLiveGame()) return;
-    if (Date.now() - state.lastHeard > SILENCE_MS) forceReconnect();
-  }, 5000);
-
-  window.addEventListener("online", () => {
-    if (inLiveGame()) forceReconnect();
-  });
-
+  function forceReconnect() { closeSocket(); scheduleReconnect(); }
   function connect() {
-    const socket = new WebSocket(socketUrl);
-    state.socket = socket;
-    state.joinedOnSocket = false;
-
-    socket.addEventListener("open", () => {
+    const socket = new WebSocket(socketUrl); state.socket = socket; state.joinedOnSocket = false;
+    socket.addEventListener('open', () => {
       if (socket !== state.socket) return;
       state.lastHeard = Date.now();
-      const msg = { type: "join", code: state.code };
-      const token = getToken(state.code);
-      if (token) msg.token = token;
-      send(msg);
+      const msg = { type: 'join', code: state.code, name: state.name }, token = getToken(state.code);
+      if (token) msg.token = token; send(msg);
     });
-
-    socket.addEventListener("message", (event) => {
+    socket.addEventListener('message', event => {
       if (socket !== state.socket) return;
       state.lastHeard = Date.now();
-      let msg;
-      try {
-        msg = JSON.parse(event.data);
-      } catch {
-        return;
+      let msg; try { msg = JSON.parse(event.data); } catch { return; }
+      if (msg.type === 'joined') {
+        state.joinedOnSocket = state.everJoined = state.inRoom = true; state.retryMs = 1000;
+        state.memberId = msg.memberId; state.code = msg.code; state.prevStatus = null;
+        sessionStorage.setItem(tokenKey(msg.code), msg.token);
+        $('room-error').textContent = ''; history.replaceState(null, '', location.pathname + '?code=' + msg.code);
+      } else if (msg.type === 'room') onRoom(msg);
+      else if (msg.type === 'left') { removeToken(); goToMenu(); }
+      else if (msg.type === 'error') {
+        if (!state.joinedOnSocket) {
+          const hadToken = Boolean(getToken(state.code)); let text = msg.message;
+          if (hadToken && ['room_full', 'room_not_found'].includes(msg.code)) removeToken();
+          if (hadToken && msg.code === 'room_not_found') text = GONE_TEXT;
+          goToMenu(text);
+        } else if (state.screen === 'room') $('room-error').textContent = msg.message;
+        else flash(msg.message);
       }
-      if (msg.type === "joined") onJoined(msg);
-      else if (msg.type === "state") onState(msg);
-      else if (msg.type === "error") onError(msg);
     });
-
-    socket.addEventListener("close", (event) => {
+    socket.addEventListener('close', event => {
       if (socket !== state.socket) return;
-      if (event.code === 4000) {
-        leaveGame("This game was opened in another tab.");
-        return;
-      }
+      if (event.code === 4000) return goToMenu('This game was opened in another tab.');
+      if (event.code === 4001) { removeToken(); return goToMenu('The room closed after 30 minutes without activity.'); }
       if (state.leaving) return;
-      if (!state.everJoined) {
-        leaveGame("Cannot reach the server.");
-        return;
-      }
-      const finished = state.lastState && state.lastState.game.status === "finished";
-      if (finished) return;
-      scheduleReconnect();
+      if (state.inRoom) scheduleReconnect(); else goToMenu('Cannot reach the server.');
     });
   }
-
-  function onJoined(msg) {
-    state.joinedOnSocket = true;
-    state.everJoined = true;
-    state.retryMs = 1000;
-    state.code = msg.code;
-    state.role = msg.role;
-    sessionStorage.setItem(tokenKey(msg.code), msg.token);
-    history.replaceState(null, "", location.pathname + "?code=" + msg.code);
-    ui.roomCode.textContent = msg.code;
-    ui.role.textContent = "You are " + capitalize(msg.role);
-    ui.role.className = "role-" + msg.role;
-    ui.lobby.hidden = true;
-    ui.game.hidden = false;
+  function joinRoom(code) {
+    goToMenu(); state.mode = 'online'; state.code = code; state.memberId = null;
+    state.everJoined = false; state.leaving = false; state.retryMs = 1000; connect();
   }
-
-  function onState(msg) {
-    const prev = state.lastState;
-    state.lastState = msg;
-    Render.update(msg.game, msg.lastMove, state.role);
-    const game = msg.game;
-
-    if (game.status === "finished") {
-      const won = game.winner === state.role;
-      let text = won ? "You win" : "You lose";
-      if (game.reason === "forfeit") text += won ? " (your opponent left)" : " (you were away too long)";
-      ui.result.textContent = text;
-      ui.banner.hidden = false;
-      ui.back.focus();
-      sessionStorage.removeItem(tokenKey(state.code));
-      showStatus();
-      return;
-    }
-
-    const opponent = state.role === "red" ? "blue" : "red";
-    const reconnected =
-      prev &&
-      prev.game.status === "playing" &&
-      game.status === "playing" &&
-      !prev.players[opponent].connected &&
-      msg.players[opponent].connected;
-    if (reconnected) flash("Opponent reconnected", 3000);
-    else if (!state.flashTimer) showStatus();
-  }
-
-  function onError(msg) {
-    if (!state.joinedOnSocket) {
-      const hadToken = Boolean(getToken(state.code));
-      let text = msg.message;
-      if (msg.code === "room_not_found" && hadToken) {
-        sessionStorage.removeItem(tokenKey(state.code));
-        text = GONE_TEXT;
-      }
-      leaveGame(text);
-      return;
-    }
-    flash(msg.message, 3000);
-  }
-
-  ui.create.addEventListener("click", async () => {
-    ui.lobbyError.textContent = "";
-    ui.create.disabled = true;
+  function leave() { if (state.mode === 'online') { send({ type: 'leave' }); removeToken(); } goToMenu(); }
+  setInterval(() => {
+    if (state.inRoom && state.socket?.readyState === WebSocket.OPEN && Date.now() - state.lastHeard > 45000) forceReconnect();
+  }, 5000);
+  window.addEventListener('online', () => { if (state.inRoom) forceReconnect(); });
+  $('name-input').value = localStorage.getItem('hackenbush:name') || '';
+  $('name-input').addEventListener('input', () => localStorage.setItem('hackenbush:name', $('name-input').value));
+  $('create').addEventListener('click', async () => {
+    if (!requireName()) return;
+    $('create').disabled = true;
     try {
-      const res = await fetch(base + "/create-game", { method: "POST" });
-      if (res.status === 200) {
-        const { code } = await res.json();
-        startGame(code);
-      } else if (res.status === 429) {
-        ui.lobbyError.textContent = "Server is full. Try again later.";
-      } else {
-        ui.lobbyError.textContent = "Cannot reach the server.";
-      }
-    } catch {
-      ui.lobbyError.textContent = "Cannot reach the server.";
-    } finally {
-      ui.create.disabled = false;
-    }
+      const res = await fetch(base + '/create-game', { method: 'POST' });
+      if (res.status === 200) joinRoom((await res.json()).code);
+      else $('menu-error').textContent = res.status === 429 ? 'Server is full. Try again later.' : 'Cannot reach the server.';
+    } catch { $('menu-error').textContent = 'Cannot reach the server.'; }
+    finally { $('create').disabled = false; }
   });
-
   function joinFromInput() {
-    const code = ui.codeInput.value.trim().toUpperCase();
-    if (!code) {
-      ui.lobbyError.textContent = "Enter a game code.";
-      return;
-    }
-    startGame(code);
+    if (!requireName()) return;
+    const code = $('code-input').value.trim().toUpperCase();
+    if (!code) { $('menu-error').textContent = 'Enter a game code.'; return; }
+    joinRoom(code);
   }
-
-  ui.join.addEventListener("click", joinFromInput);
-  ui.codeInput.addEventListener("keydown", (event) => {
-    if (event.key === "Enter") joinFromInput();
-  });
-
-  ui.back.addEventListener("click", () => leaveGame());
-
-  ui.copyLink.addEventListener("click", () => {
-    const link = joinLink();
-    if (!navigator.clipboard) {
-      ui.status.textContent = link;
-      return;
-    }
-    navigator.clipboard.writeText(link).then(
-      () => flash("Link copied", 2000),
-      () => {
-        ui.status.textContent = link;
-      },
-    );
-  });
-
-  Render.init(ui.board, (edgeId) => send({ type: "cut", edgeId }));
-
-  const params = new URLSearchParams(location.search);
-  const codeParam = (params.get("code") || "").trim().toUpperCase();
-  if (codeParam) {
-    ui.codeInput.value = codeParam;
-    if (getToken(codeParam)) startGame(codeParam);
+  $('join').addEventListener('click', joinFromInput);
+  $('code-input').addEventListener('keydown', e => { if (e.key === 'Enter') joinFromInput(); });
+  for (const [field, id] of Object.entries({ mode: 'setting-mode', board: 'setting-board', redPlayer: 'setting-red' })) {
+    $(id).addEventListener('change', () => {
+      labels('setting-mode', 'setting-red', true); send({ type: 'settings', [field]: $(id).value });
+    });
   }
+  $('start').addEventListener('click', () => send({ type: 'start' }));
+  $('leave-room').addEventListener('click', leave); $('leave-game').addEventListener('click', leave);
+  $('copy-code').addEventListener('click', async () => {
+    const code = state.code;
+    try {
+      await navigator.clipboard.writeText(code); $('copy-code').textContent = 'Copied';
+      setTimeout(() => { $('copy-code').textContent = 'Copy code'; }, 2000);
+    } catch {
+      $('copy-fallback').hidden = false; $('copy-fallback').value = code; $('copy-fallback').select();
+    }
+  });
+  for (const id of ['setting-board', 'bot-board']) {
+    for (const b of [...Boards.BOARDS, { id: 'random', name: 'Random' }]) {
+      const o = document.createElement('option'); o.value = b.id; o.textContent = b.name; $(id).appendChild(o);
+    }
+    $(id).value = 'random';
+  }
+  $('bot-mode').addEventListener('change', () => labels('bot-mode', 'bot-side', false));
+  $('play-bot').addEventListener('click', () => { if (requireName()) { state.mode = 'bot'; show('bot-setup'); } });
+  $('bot-back').addEventListener('click', () => goToMenu());
+  function updateBot(lastMove) {
+    const b = state.bot; drawGame(b.game, lastMove, b.humanSide);
+    if (b.game.status === 'finished') { $('result').textContent = resultText(b.game); $('banner').hidden = false; }
+  }
+  function scheduleBot() {
+    const b = state.bot;
+    b.timer = setTimeout(() => {
+      if (state.bot !== b || b.game.status !== 'playing') return;
+      b.timer = null;
+      const edgeId = Bot.chooseMove(b.game, b.game.turn, b.difficulty);
+      const result = Game.applyCut(b.game, b.game.turn, edgeId);
+      updateBot({ edgeId, fell: result.fell });
+    }, 500 + Math.random() * 400);
+  }
+  function startBot() {
+    clearTimeout(state.bot?.timer); clearTimeout(state.flashTimer); state.flashTimer = null;
+    const mode = $('bot-mode').value;
+    const boardId = $('bot-board').value === 'random' ? Boards.pickBoardId(Math.random) : $('bot-board').value;
+    const choice = $('bot-side').value;
+    const humanSide = choice === 'random' ? (Math.random() < .5 ? 'red' : 'blue') : choice === 'human-first-or-red' ? 'red' : 'blue';
+    const seed = Math.floor(Math.random() * 2 ** 31), difficulty = $('bot-difficulty').value;
+    const sides = { [humanSide]: { id: 'you', name: state.name },
+      [Game.otherColor(humanSide)]: { id: 'bot', name: 'Bot (' + difficulty[0].toUpperCase() + difficulty.slice(1) + ')' } };
+    Render.reset(); state.mode = 'bot';
+    state.bot = { game: Game.newGame(Boards.makeBoard(boardId, mode, seed), mode, sides), humanSide, difficulty, timer: null };
+    $('banner').hidden = true; show('game'); updateBot();
+    if (humanSide === 'blue') scheduleBot();
+  }
+  function humanCut(edgeId) {
+    const b = state.bot;
+    if (!b || b.game.status !== 'playing' || b.game.turn !== b.humanSide) return;
+    const result = Game.applyCut(b.game, b.humanSide, edgeId);
+    if (!result.ok) return flash(result.message);
+    updateBot({ edgeId, fell: result.fell });
+    if (b.game.status === 'playing') scheduleBot();
+  }
+  $('bot-start').addEventListener('click', startBot); $('play-again').addEventListener('click', startBot);
+  $('banner-menu').addEventListener('click', () => goToMenu());
+  Render.init($('board'), id => state.mode === 'bot' ? humanCut(id) : send({ type: 'cut', edgeId: id }));
+  const code = (new URLSearchParams(location.search).get('code') || '').trim().toUpperCase();
+  if (code) { $('code-input').value = code; if (getToken(code) && $('name-input').value.trim()) { state.name = $('name-input').value.trim(); joinRoom(code); } }
 })();

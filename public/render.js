@@ -1,8 +1,6 @@
-// SVG rendering of the board and the fall animation. Draws only what the
-// server sends; decides nothing about the rules.
+// Draws a board; decides nothing about the rules.
 (function () {
   const SVG_NS = "http://www.w3.org/2000/svg";
-  const GROUND_Y = 360;
   const FALL_MS = 600;
 
   let svg = null;
@@ -16,15 +14,26 @@
   }
 
   function draw(board) {
-    svg.appendChild(el("line", { class: "ground", x1: 0, y1: GROUND_Y, x2: 600, y2: GROUND_Y }));
+    const GROUND_Y = board.height + 20;
+    svg.setAttribute("viewBox", `0 0 ${board.width} ${board.height + 60}`);
+    svg.appendChild(el("line", { class: "ground", x1: 0, y1: GROUND_Y, x2: board.width, y2: GROUND_Y }));
     const pos = new Map(board.nodes.map((n) => [n.id, { x: n.x, y: GROUND_Y - n.y }]));
     for (const e of board.edges) {
       const a = pos.get(e.a);
       const b = pos.get(e.b);
       const line = { x1: a.x, y1: a.y, x2: b.x, y2: b.y };
       const g = el("g", { id: "e-" + e.id, class: e.color, "data-color": e.color });
-      g.appendChild(el("line", { class: "stroke", ...line }));
-      g.appendChild(el("line", { class: "hit", ...line }));
+      let shape = "line", attrs = line;
+      if (e.a === e.b) {
+        const point = angle => {
+          const t = angle * Math.PI / 180;
+          return `${a.x + 45 * Math.sin(t)} ${a.y - 45 * Math.cos(t)}`;
+        };
+        shape = "path";
+        attrs = { d: `M ${a.x} ${a.y} C ${point(e.angle - 40)} ${point(e.angle + 40)} ${a.x} ${a.y}` };
+      }
+      g.appendChild(el(shape, { class: "stroke", ...attrs }));
+      g.appendChild(el(shape, { class: "hit", ...attrs }));
       svg.appendChild(g);
     }
     for (const n of board.nodes) {
@@ -84,7 +93,7 @@
       const myTurn = game.status === "playing" && game.turn === role;
       svg.classList.toggle("waiting-turn", !myTurn);
       for (const g of svg.querySelectorAll('g[id^="e-"]')) {
-        const mine = g.dataset.color === role;
+        const mine = g.dataset.color === role || g.dataset.color === "green";
         g.classList.toggle("mine", mine);
         if (mine && myTurn && !g.classList.contains("fall")) {
           g.setAttribute("tabindex", "0");
