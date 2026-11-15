@@ -1,0 +1,260 @@
+#guide-dialog {
+  --hbg-paper: var(--panel, #fffaf0);
+  --hbg-ink: var(--ink, #263b30);
+  --hbg-muted: #526052;
+  --hbg-rule: var(--line, #c9c2aa);
+  --hbg-forest: var(--forest, #173e31);
+  position: fixed;
+  inset: 0;
+  box-sizing: border-box;
+  width: min(37rem, calc(100% - 2rem));
+  max-width: none;
+  max-height: calc(100% - 2rem);
+  max-height: calc(100dvh - 2rem);
+  margin: auto;
+  padding: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid #8e927a;
+  border-radius: 11px;
+  background: var(--hbg-paper);
+  box-shadow: 0 21px 80px #182b2160;
+  color: var(--hbg-ink);
+  font: 400 15px/1.48 var(--sans, "DM Sans", Arial, sans-serif);
+  text-align: left;
+}
+
+#guide-dialog:not([open]), #guide-dialog [hidden] { display: none; }
+#guide-dialog::backdrop { background: rgb(21 39 30 / 54%); }
+#guide-dialog *, #guide-dialog *::before, #guide-dialog *::after { box-sizing: border-box; }
+#guide-dialog .hb-guide-sheet { padding: clamp(19px, 3.5vw, 31px); }
+#guide-dialog .hb-guide-header { display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+
+#guide-dialog h2, #guide-dialog h3 {
+  margin: 0;
+  color: var(--hbg-ink);
+  font-family: var(--serif, "Instrument Serif", Georgia, serif);
+  font-style: normal;
+  font-weight: 400;
+  text-transform: none;
+}
+
+#guide-dialog h2 { font-size: clamp(2.55rem, 6vw, 3.45rem); line-height: 1; letter-spacing: -.042em; }
+#guide-dialog h2:focus { outline: none; }
+#guide-dialog h3 { font-size: clamp(1.85rem, 3.7vw, 2.25rem); line-height: 1.08; letter-spacing: -.03em; }
+#guide-dialog button { min-width: 0; font-family: inherit; cursor: pointer; }
+
+#guide-dialog .hb-guide-close {
+  display: grid;
+  flex: none;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  padding: 0;
+  border: 1px solid var(--hbg-rule);
+  border-radius: 50%;
+  background: transparent;
+  color: var(--hbg-forest);
+}
+
+#guide-dialog .hb-guide-close svg { width: 17px; height: 17px; fill: none; stroke: currentColor; stroke-width: 1.65; stroke-linecap: round; }
+#guide-dialog .hb-guide-intro { margin: 12px 0; font-size: 1rem; line-height: 1.5; }
+
+#guide-dialog .hb-guide-players {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px 20px;
+  padding: 9px 13px;
+  border: 1px solid #d8cfb7;
+  border-radius: 5px;
+  background: #f6f0df;
+}
+
+#guide-dialog .hb-guide-players > div { display: flex; align-items: center; gap: 8px; font-size: .85rem; }
+#guide-dialog .hb-guide-players > div[hidden] { display: none; }
+#guide-dialog [data-color="green"] { --hbg-edge: #416443; }
+#guide-dialog [data-color="blue"] { --hbg-edge: #365d88; }
+#guide-dialog [data-color="red"] { --hbg-edge: #aa493c; }
+
+#guide-dialog .hb-guide-swatch {
+  position: relative;
+  width: 19px;
+  height: 4px;
+  flex: none;
+  border-radius: 3px;
+  background: var(--hbg-edge);
+  transform: rotate(-17deg);
+}
+
+#guide-dialog .hb-guide-swatch:not([data-color="green"])::before {
+  content: "";
+  position: absolute;
+  left: 45%;
+  top: 0;
+  height: 100%;
+  width: 4px;
+  border-left: 1px solid #fff8e6;
+}
+
+#guide-dialog .hb-guide-swatch[data-color="blue"]::before { left: 37%; border-right: 1px solid #fff8e6; }
+#guide-dialog .hb-guide-variant, #guide-dialog .hb-guide-clock { margin: 5px 0 0; color: var(--hbg-muted); font-size: .79rem; line-height: 1.43; }
+#guide-dialog .hb-guide-practice { margin: 20px 0 18px; }
+#guide-dialog .hb-guide-practice > p { margin: 5px 0 12px; font-size: .89rem; line-height: 1.45; }
+#guide-dialog .hb-guide-example {
+  overflow: hidden;
+  border: 1px solid var(--hbg-rule);
+  border-radius: 7px;
+  background: #f6f1e1;
+}
+
+#guide-dialog .hb-guide-options {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  min-width: 0;
+  margin: 0 0 9px;
+  padding: 2px;
+  gap: 2px;
+  border: 1px solid #ccc3a8;
+  border-radius: 6px;
+  background: #f3efdf;
+}
+#guide-dialog .hb-guide-options label { position: relative; display: grid; margin: 0; cursor: pointer; }
+#guide-dialog .hb-guide-sr, #guide-dialog .hb-guide-options input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  border: 0;
+  white-space: nowrap;
+}
+#guide-dialog .hb-guide-options span {
+  display: grid;
+  place-items: center;
+  min-height: 38px;
+  padding: 5px 3px;
+  border-radius: 4px;
+  color: var(--hbg-muted);
+  text-align: center;
+  font-size: .82rem;
+  font-weight: 600;
+  line-height: 1.15;
+}
+#guide-dialog .hb-guide-options input:checked + span { color: #fff9e7; background: var(--hbg-forest); }
+#guide-dialog .hb-guide-caption {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: .5rem;
+  min-height: 39px;
+  padding-inline: 15px 9px;
+}
+#guide-dialog .hb-guide-turn {
+  display: flex;
+  gap: 7px;
+  align-items: center;
+  margin: 0;
+  color: var(--hbg-ink);
+  font-size: .79rem;
+  font-weight: 650;
+}
+#guide-dialog .hb-guide-turn::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--hbg-edge, var(--hbg-forest));
+}
+#guide-dialog .hb-guide-reset {
+  min-height: 38px;
+  padding: 4px 7px;
+  border: 0;
+  border-radius: 3px;
+  background: transparent;
+  color: var(--hbg-forest);
+  font: 550 .79rem/1.3 var(--sans, "DM Sans", Arial, sans-serif);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+#guide-dialog .hb-guide-diagram { width: 100%; }
+#guide-dialog .hb-guide-diagram .hb-field {
+  --hb-paper: #f6f1e1;
+  --hb-stem: 4.3;
+  --hb-target-stem: 5;
+  --hb-halo: 13px;
+  height: clamp(128px, 18vw, 148px);
+  min-height: 0;
+  aspect-ratio: auto;
+  background: linear-gradient(#f6f1e1, #f9f5e8 55%, #f6f1e1);
+}
+#guide-dialog .hb-guide-diagram .hb-field__dot { opacity: .16; }
+#guide-dialog .hb-guide-diagram .hb-field__edge--hint .hb-field__halo { opacity: .85; }
+#guide-dialog .hb-guide-diagram .hb-field__edge--target .hb-field__halo { opacity: .24; }
+
+/* Show the selected branch, then reveal the fate of the rest on the cut. */
+#guide-dialog .hb-guide-predicting .hb-field__edge--falling .hb-field__stem { stroke-dasharray: none; opacity: 1; }
+#guide-dialog .hb-guide-predicting .hb-field__edge--falling .hb-field__edge-keyline { stroke-dasharray: none; opacity: .77; }
+#guide-dialog .hb-guide-predicting .hb-field__edge--falling .hb-field__stripes,
+#guide-dialog .hb-guide-predicting .hb-field__region--opening,
+#guide-dialog .hb-guide-predicting .hb-field__region--falling,
+#guide-dialog .hb-guide-predicting .hb-field__joint--falling { opacity: 1; }
+#guide-dialog .hb-guide-predicting .hb-field__region--opening .hb-field__cut-wash { opacity: 0; }
+#guide-dialog .hb-guide-action-row {
+  display: grid;
+  gap: 9px;
+  padding: 13px 15px;
+  border-top: 1px solid var(--hbg-rule);
+  background: #fff9ec;
+}
+#guide-dialog .hb-guide-question { margin: 0; color: var(--hbg-ink); font-size: .97rem; font-weight: 650; line-height: 1.4; }
+#guide-dialog .hb-guide-feedback { margin: 0; color: #405444; font-size: .9rem; line-height: 1.45; }
+#guide-dialog .hb-guide-feedback:not([hidden]) + .hb-guide-question:not([hidden]) { margin-top: 8px; }
+#guide-dialog .hb-guide-buttons { display: flex; flex-wrap: wrap; align-items: stretch; gap: 6px; }
+#guide-dialog .hb-guide-action {
+  min-height: 38px;
+  padding: 7px 12px;
+  border: 1px solid #8d9b82;
+  border-radius: 5px;
+  background: #fffcf4;
+  color: var(--hbg-forest);
+  font-size: .82rem;
+  font-weight: 650;
+  line-height: 1.25;
+}
+#guide-dialog .hb-guide-action--primary { border-color: var(--hbg-forest); background: var(--hbg-forest); color: #fff9e7; }
+#guide-dialog .hb-guide-instruction { margin: 0; color: var(--hbg-muted); font-size: .77rem; line-height: 1.42; }
+#guide-dialog .hb-guide-setup { border-top: 1px solid var(--hbg-rule); font-size: .86rem; }
+#guide-dialog .hb-guide-setup summary { padding: 10px 0; color: var(--hbg-forest); font-weight: 650; cursor: pointer; }
+#guide-dialog .hb-guide-setup summary::marker { font-size: .83em; }
+#guide-dialog .hb-guide-setup ol { margin: 0 0 11px; padding-inline-start: 1.4em; }
+#guide-dialog .hb-guide-setup li + li { margin-top: 4px; }
+#guide-dialog .hb-guide-setup p { margin: 0 0 11px; }
+
+#guide-dialog button:focus-visible, #guide-dialog .hb-guide-setup summary:focus-visible, #guide-dialog .hb-guide-options input:focus-visible + span { outline: 2px solid var(--hbg-forest); outline-offset: 2px; }
+
+@media (hover: hover) {
+  #guide-dialog .hb-guide-close:hover, #guide-dialog .hb-guide-options label:hover input:not(:checked) + span { background: #eae6d2; }
+  #guide-dialog .hb-guide-action:hover, #guide-dialog .hb-guide-reset:hover { background: #eeeeda; }
+  #guide-dialog .hb-guide-action--primary:hover { background: #28543f; }
+}
+
+@media (max-width: 30rem) {
+  #guide-dialog { width: calc(100% - 1rem); max-height: calc(100dvh - 1rem); }
+  #guide-dialog .hb-guide-sheet { padding: 18px 16px; }
+  #guide-dialog .hb-guide-players { gap: 5px 12px; }
+  #guide-dialog .hb-guide-options span { min-height: 44px; font-size: .77rem; }
+  #guide-dialog .hb-guide-action { min-height: 44px; }
+  #guide-dialog .hb-guide-action-row { padding: 12px; }
+}
+
+@media (max-width: 22rem) {
+  #guide-dialog .hb-guide-options { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (forced-colors: active) {
+  #guide-dialog .hb-guide-options input:checked + span { outline: 1px solid Highlight; }
+  #guide-dialog .hb-guide-diagram .hb-field { background: Canvas; }
+}
