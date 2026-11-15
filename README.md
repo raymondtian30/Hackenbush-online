@@ -55,11 +55,21 @@ Two ways to deploy:
 1. **Single host.** Deploy the whole repository to the long-lived host with
    `npm start` as the start command. The server serves the page and the game.
    Nothing to configure.
-2. **Client on Vercel, server elsewhere.** Deploy the repository to the
-   long-lived host as above and set `ALLOWED_ORIGIN` to the Vercel site's
-   `https://` origin. Set `window.SERVER_URL` in `public/config.js` to the
-   server's `https://` URL, then deploy the `public/` folder to Vercel as a
-   static site.
+2. **Client on Vercel, server on Render.** The repository includes
+   `render.yaml` and `vercel.json` for this.
+   1. In Render, create a **Blueprint** from this repository. It creates the
+      `hackenbush-server` web service. Note its URL, for example
+      `https://hackenbush-server.onrender.com`.
+   2. In Vercel, import this repository and add the environment variable
+      `SERVER_URL` set to the Render URL. The build step
+      (`node scripts/write-config.js`) writes it into `public/config.js`, and
+      Vercel serves the `public/` folder.
+   3. Back in Render, set `ALLOWED_ORIGIN` to the Vercel site's origin, for
+      example `https://hackenbush-online.vercel.app`, and let it redeploy.
+
+   For any other split setup, set `window.SERVER_URL` in `public/config.js`
+   (or run `SERVER_URL=https://... node scripts/write-config.js`) and set
+   `ALLOWED_ORIGIN` on the server.
 
 Use `https` URLs in both places; the client then connects with encrypted
 `wss://` WebSockets. Only the one origin in `ALLOWED_ORIGIN` may create or join

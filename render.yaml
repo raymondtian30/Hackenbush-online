@@ -1,0 +1,14 @@
+# Render Blueprint for the game server (a long-lived Node process).
+services:
+  - type: web
+    name: hackenbush-server
+    runtime: node
+    plan: free
+    buildCommand: npm ci
+    startCommand: npm start
+    healthCheckPath: /
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: ALLOWED_ORIGIN # the Vercel site's https origin, no trailing slash
+        sync: false
