@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Hackenbush Online</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main>
+    <section id="lobby">
+      <h1>Hackenbush Online</h1>
+      <p class="intro">Red-Blue Hackenbush for two players. Cut an edge of your color; anything no longer connected to the ground falls. If you cannot move on your turn, you lose.</p>
+      <button id="create" type="button">Create Game</button>
+      <div class="join-row">
+        <input id="code-input" maxlength="5" autocomplete="off" spellcheck="false" placeholder="CODE" aria-label="Game code">
+        <button id="join" type="button">Join Game</button>
+      </div>
+      <p id="lobby-error" role="alert"></p>
+    </section>
+
+    <section id="game" hidden>
+      <header class="game-header">
+        <span>Game <strong id="room-code"></strong></span>
+        <button id="copy-link" type="button">Copy join link</button>
+        <span id="role"></span>
+      </header>
+      <p id="status" aria-live="polite"></p>
+      <div class="board-wrap">
+        <svg id="board" viewBox="0 0 600 400" role="img" aria-label="Hackenbush board"></svg>
+        <div id="banner" hidden>
+          <p id="result"></p>
+          <button id="back" type="button">Back to lobby</button>
+        </div>
+      </div>
+    </section>
+  </main>
+  <script src="config.js"></script>
+  <script src="render.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

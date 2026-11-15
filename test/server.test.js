@@ -154,3 +154,41 @@ test("allowed origin: CORS headers and accepted upgrade; other origins refused",
   assert.equal((await createGame(port, { Origin: bad })).status, 403);
   await assert.rejects(openSocket(port, { Origin: bad }), { status: 403 });
 });
+
+test("GET / serves the lobby page, including with a query string", async (t) => {
+  const { port } = await startApp(t);
+  for (const path of ["/", "/?code=ABCDE"]) {
+    const res = await request(port, { path });
+    assert.equal(res.status, 200, path);
+    assert.match(res.headers["content-type"], /^text\/html/);
+    assert.match(res.body, /id="lobby"/);
+  }
+});
+
+test("HEAD / returns 200 with no body", async (t) => {
+  const { port } = await startApp(t);
+  const res = await request(port, { method: "HEAD", path: "/" });
+  assert.equal(res.status, 200);
+  assert.equal(res.body, "");
+});
+
+test("client scripts are served as JavaScript", async (t) => {
+  const { port } = await startApp(t);
+  for (const path of ["/config.js", "/render.js", "/app.js"]) {
+    const res = await request(port, { path });
+    assert.equal(res.status, 200, path);
+    assert.match(res.headers["content-type"], /^text\/javascript/);
+  }
+});
+
+test("paths outside public/ return 404", async (t) => {
+  const { port } = await startApp(t);
+  for (const path of ["/..%2fpackage.json", "/%2e%2e%2fpackage.json", "/%00", "/server.js", "/nope.html"]) {
+    assert.equal((await request(port, { path })).status, 404, path);
+  }
+});
+
+test("DELETE / returns 405", async (t) => {
+  const { port } = await startApp(t);
+  assert.equal((await request(port, { method: "DELETE", path: "/" })).status, 405);
+});
