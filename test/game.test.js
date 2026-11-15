@@ -154,6 +154,48 @@ test("the player left with no edge of their color loses", () => {
   assert.equal(game.reason, "no_moves");
 });
 
+test("the game ends when the player to move has no edge of their color, even if other edges remain", () => {
+  const b = makeBoard(
+    [[0, 0, 0, true], [1, 0, 100], [2, 0, 200], [3, 50, 100]],
+    [[0, 0, 1, "R"], [1, 1, 2, "B"], [2, 0, 3, "R"]],
+  );
+  const game = playingGame(b);
+  assert.deepEqual(applyCut(game, "red", 0), { ok: true, fell: { edges: [1], nodes: [1, 2] } });
+  assert.equal(game.status, "finished");
+  assert.equal(game.winner, "red");
+  assert.equal(game.reason, "no_moves");
+  assert.deepEqual(game.board.edges.map((e) => e.id), [2]);
+});
+
+test("a cut that leaves both colors with edges keeps the game playing", () => {
+  const game = playingGame();
+  applyCut(game, "red", 0);
+  assert.equal(game.status, "playing");
+  assert.equal(game.winner, null);
+});
+
+test("turn is checked before edge color", () => {
+  assertRejected(playingGame(), "blue", 0, "It is not your turn.");
+});
+
+test("an edge that already fell cannot be cut", () => {
+  const game = playingGame();
+  applyCut(game, "red", 0);
+  applyCut(game, "blue", 12);
+  assertRejected(game, "red", 2, "No such edge.");
+});
+
+test("newGame deep-copies the board", () => {
+  const game = newGame(defaultBoard);
+  assert.notEqual(game.board.edges, defaultBoard.edges);
+  assert.notEqual(game.board.edges[0], defaultBoard.edges[0]);
+});
+
+test("validateBoard rejects a board with no red edge", () => {
+  const b = makeBoard([[0, 0, 0, true], [1, 0, 100]], [[0, 0, 1, "B"]]);
+  assert.throws(() => validateBoard(b), /red/);
+});
+
 test("forfeit gives the win to the other color", () => {
   const game = playingGame();
   forfeit(game, "red");
