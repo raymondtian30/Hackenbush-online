@@ -36,6 +36,7 @@
     retryTimer: null,
     flashTimer: null,
     leaving: true,
+    everJoined: false,
   };
 
   const tokenKey = (code) => "hackenbush:" + code;
@@ -83,16 +84,27 @@
     state.leaving = true;
     clearTimeout(state.retryTimer);
     clearTimeout(state.flashTimer);
-    const socket = state.socket;
-    state.socket = null;
-    if (socket) socket.close();
+    state.flashTimer = null;
+    closeSocket();
     Render.reset();
     state.lastState = null;
     history.replaceState(null, "", location.pathname);
     showLobby(error);
   }
 
+  function closeSocket() {
+    const socket = state.socket;
+    state.socket = null;
+    if (socket) socket.close();
+  }
+
   function startGame(code) {
+    clearTimeout(state.retryTimer);
+    clearTimeout(state.flashTimer);
+    state.flashTimer = null;
+    closeSocket();
+    state.everJoined = false;
+    ui.status.textContent = "";
     state.code = code;
     state.role = null;
     state.leaving = false;
@@ -135,8 +147,13 @@
         leaveGame("This game was opened in another tab.");
         return;
       }
+      if (state.leaving) return;
+      if (!state.everJoined) {
+        leaveGame("Cannot reach the server.");
+        return;
+      }
       const finished = state.lastState && state.lastState.game.status === "finished";
-      if (state.leaving || finished) return;
+      if (finished) return;
       ui.status.textContent = "Reconnecting...";
       state.retryTimer = setTimeout(connect, state.retryMs);
       state.retryMs = Math.min(state.retryMs * 2, 5000);
@@ -145,6 +162,7 @@
 
   function onJoined(msg) {
     state.joinedOnSocket = true;
+    state.everJoined = true;
     state.retryMs = 1000;
     state.code = msg.code;
     state.role = msg.role;
@@ -169,6 +187,7 @@
       if (game.reason === "forfeit") text += won ? " (your opponent left)" : " (you were away too long)";
       ui.result.textContent = text;
       ui.banner.hidden = false;
+      ui.back.focus();
       sessionStorage.removeItem(tokenKey(state.code));
       showStatus();
       return;

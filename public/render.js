@@ -35,7 +35,7 @@
   }
 
   function fall(id) {
-    const node = svg.querySelector("#" + id);
+    const node = document.getElementById(id);
     if (!node || node.classList.contains("fall")) return;
     node.classList.add("fall");
     setTimeout(() => node.remove(), FALL_MS);
@@ -45,10 +45,16 @@
     init(svgEl, clickHandler) {
       svg = svgEl;
       onEdgeClick = clickHandler;
-      svg.addEventListener("click", (event) => {
-        const g = event.target.closest('g[id^="e-"]');
+      const activate = (target) => {
+        const g = target.closest('g[id^="e-"]');
         if (!g || !g.classList.contains("mine") || svg.classList.contains("waiting-turn")) return;
         onEdgeClick(Number(g.id.slice(2)));
+      };
+      svg.addEventListener("click", (event) => activate(event.target));
+      svg.addEventListener("keydown", (event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        activate(event.target);
       });
     },
 
@@ -75,11 +81,21 @@
         if (!edgeIds.has(node.id) && !nodeIds.has(node.id)) node.remove();
       }
 
-      for (const g of svg.querySelectorAll('g[id^="e-"]')) {
-        g.classList.toggle("mine", g.dataset.color === role);
-      }
       const myTurn = game.status === "playing" && game.turn === role;
       svg.classList.toggle("waiting-turn", !myTurn);
+      for (const g of svg.querySelectorAll('g[id^="e-"]')) {
+        const mine = g.dataset.color === role;
+        g.classList.toggle("mine", mine);
+        if (mine && myTurn && !g.classList.contains("fall")) {
+          g.setAttribute("tabindex", "0");
+          g.setAttribute("role", "button");
+          g.setAttribute("aria-label", "Cut " + g.dataset.color + " edge " + g.id.slice(2));
+        } else {
+          g.removeAttribute("tabindex");
+          g.removeAttribute("role");
+          g.removeAttribute("aria-label");
+        }
+      }
     },
   };
 })();

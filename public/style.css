@@ -72,7 +72,9 @@ button:hover { background: #eee; }
 #board .blue .stroke { stroke: #1565c0; }
 #board .hit { stroke: transparent; stroke-width: 20; }
 
-#board circle { fill: #424242; }
+#board circle { fill: #424242; pointer-events: none; }
+#board .mine:focus { outline: none; }
+#board .mine:focus-visible .stroke { stroke-width: 9; stroke-dasharray: 4 3; }
 
 #board .mine { cursor: pointer; }
 #board .mine:hover .stroke { stroke-width: 9; }
