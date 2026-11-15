@@ -18,6 +18,10 @@
     back: $("back"),
   };
 
+  // The server sends a "ping" message every 30 s. Hearing nothing for longer
+  // than this means the connection died silently (network switch, sleep).
+  const SILENCE_MS = 45000;
+
   const GONE_TEXT =
     "This game no longer exists on the server. It may have ended, or the server may have restarted.";
 
@@ -37,6 +41,7 @@
     flashTimer: null,
     leaving: true,
     everJoined: false,
+    lastHeard: 0,
   };
 
   const tokenKey = (code) => "hackenbush:" + code;
@@ -115,6 +120,34 @@
     connect();
   }
 
+  function scheduleReconnect() {
+    ui.status.textContent = "Reconnecting...";
+    clearTimeout(state.retryTimer);
+    state.retryTimer = setTimeout(connect, state.retryMs);
+    state.retryMs = Math.min(state.retryMs * 2, 5000);
+  }
+
+  // Drop a socket that may be dead without waiting for the browser to notice.
+  function forceReconnect() {
+    closeSocket();
+    scheduleReconnect();
+  }
+
+  function inLiveGame() {
+    const finished = state.lastState && state.lastState.game.status === "finished";
+    return !state.leaving && state.everJoined && !finished;
+  }
+
+  setInterval(() => {
+    const socket = state.socket;
+    if (!socket || socket.readyState !== WebSocket.OPEN || !inLiveGame()) return;
+    if (Date.now() - state.lastHeard > SILENCE_MS) forceReconnect();
+  }, 5000);
+
+  window.addEventListener("online", () => {
+    if (inLiveGame()) forceReconnect();
+  });
+
   function connect() {
     const socket = new WebSocket(socketUrl);
     state.socket = socket;
@@ -122,6 +155,7 @@
 
     socket.addEventListener("open", () => {
       if (socket !== state.socket) return;
+      state.lastHeard = Date.now();
       const msg = { type: "join", code: state.code };
       const token = getToken(state.code);
       if (token) msg.token = token;
@@ -130,6 +164,7 @@
 
     socket.addEventListener("message", (event) => {
       if (socket !== state.socket) return;
+      state.lastHeard = Date.now();
       let msg;
       try {
         msg = JSON.parse(event.data);
@@ -154,9 +189,7 @@
       }
       const finished = state.lastState && state.lastState.game.status === "finished";
       if (finished) return;
-      ui.status.textContent = "Reconnecting...";
-      state.retryTimer = setTimeout(connect, state.retryMs);
-      state.retryMs = Math.min(state.retryMs * 2, 5000);
+      scheduleReconnect();
     });
   }
 

@@ -190,6 +190,7 @@ Server to client:
 | `joined` | `code`, `role`, `token`        | Join accepted. `role` is `red` or `blue`.       |
 | `state`  | `game`, `players`, `lastMove?` | Full snapshot, sent after every change.         |
 | `error`  | `code`, `message`              | Request rejected, state unchanged.              |
+| `ping`   | none                           | Sent every 30 seconds. A client that hears nothing for 45 seconds treats the connection as dead and reconnects. |
 
 `players` is `{red: {connected}, blue: {connected}}`. `lastMove` is
 `{edgeId, fell: {edges, nodes}}`, and is absent after a forfeit. The server

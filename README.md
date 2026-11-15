@@ -26,8 +26,8 @@ npm start
 Open <http://localhost:3000> in two browser windows. Click **Create Game** in
 one, then enter the code (or open the join link) in the other. Each tab holds
 its own seat, so two windows of the same browser can play each other. Reloading
-a tab mid-game keeps your seat; closing it gives you 60 seconds to come back
-before you forfeit.
+the tab or losing the connection keeps your seat for 60 seconds; closing the
+tab gives it up.
 
 ## Tests
 
@@ -62,7 +62,9 @@ Two ways to deploy:
    static site.
 
 Use `https` URLs in both places; the client then connects with encrypted
-`wss://` WebSockets.
+`wss://` WebSockets. Only the one origin in `ALLOWED_ORIGIN` may create or join
+games, so Vercel preview URLs are refused, and a misconfigured origin shows up
+in the lobby as "Cannot reach the server."
 
 Limits and behavior to know:
 

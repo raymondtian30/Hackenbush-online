@@ -192,3 +192,11 @@ test("DELETE / returns 405", async (t) => {
   const { port } = await startApp(t);
   assert.equal((await request(port, { method: "DELETE", path: "/" })).status, 405);
 });
+
+test("the heartbeat sends a ping message the client can see", async (t) => {
+  const { port } = await startApp(t, { heartbeatMs: 50 });
+  const s = await openSocket(port);
+  const ping = await s.next((m) => m.type === "ping");
+  assert.deepEqual(ping, { type: "ping" });
+  s.ws.close();
+});

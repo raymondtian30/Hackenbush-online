@@ -19,6 +19,7 @@ const MIME = {
 function createApp(options = {}) {
   const allowedOrigin = options.allowedOrigin ?? process.env.ALLOWED_ORIGIN ?? "";
   const registry = createRegistry(options.registry);
+  const heartbeatMs = options.heartbeatMs ?? HEARTBEAT_MS;
   const wss = new WebSocketServer({ noServer: true, maxPayload: 1024 });
 
   function parsePath(req) {
@@ -171,8 +172,11 @@ function createApp(options = {}) {
       }
       ws.isAlive = false;
       ws.ping();
+      // Browsers hide protocol pings from page code; this message lets the
+      // client notice a connection that has silently died.
+      if (ws.readyState === ws.OPEN) ws.send(JSON.stringify({ type: "ping" }));
     }
-  }, HEARTBEAT_MS);
+  }, heartbeatMs);
 
   function close() {
     clearInterval(heartbeat);
