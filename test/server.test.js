@@ -4,6 +4,8 @@ const http = require("node:http");
 const { once } = require("node:events");
 const WebSocket = require("ws");
 const { createApp } = require("../server.js");
+const { legalMoves } = require("../public/lib/game.js");
+const { makeBoard } = require("../public/lib/boards.js");
 
 async function startApp(t, options = {}) {
   const app = createApp({ allowedOrigin: "", ...options });
@@ -70,7 +72,7 @@ test("POST /create-game returns a 5-character code", async (t) => {
   assert.match(res.json.code, /^[A-HJ-NP-Z2-9]{5}$/);
 });
 
-test("two sockets play R0, B4, R9 and both see Red win", async (t) => {
+test("two sockets complete a large board and both see the same result", async (t) => {
   const { port } = await startApp(t);
   const { code } = (await createGame(port)).json;
   const red = await openSocket(port);
@@ -82,15 +84,25 @@ test("two sockets play R0, B4, R9 and both see Red win", async (t) => {
 
   red.ws.send(JSON.stringify({ type: "settings", board: "classic", redPlayer: "host" }));
   red.ws.send(JSON.stringify({ type: "start" }));
-  await blue.next(m => m.type === "room" && m.room.status === "playing");
-  const moves = [[red, 0], [blue, 4], [red, 9]];
-  for (const [p, edgeId] of moves) {
+  let snapshot = await blue.next(m => m.type === "room" && m.room.status === "playing");
+  const starting = snapshot.room.game.board;
+  const groundNodes = new Set(starting.nodes.filter(n => n.ground).map(n => n.id));
+  const supports = starting.edges.filter(e => groundNodes.has(e.a) || groundNodes.has(e.b)).length;
+  let moves = 0;
+  while (snapshot.room.game.status === "playing") {
+    const game = snapshot.room.game;
+    const ground = new Set(game.board.nodes.filter(n => n.ground).map(n => n.id));
+    const legal = new Set(legalMoves(game, game.turn));
+    const edgeId = game.board.edges.find(e => legal.has(e.id) && (ground.has(e.a) || ground.has(e.b))).id;
+    const p = game.turn === "red" ? red : blue;
     p.ws.send(JSON.stringify({ type: "cut", edgeId }));
-    await red.next((m) => m.type === "room" && m.lastMove?.edgeId === edgeId);
+    snapshot = await red.next((m) => m.type === "room" && m.lastMove?.edgeId === edgeId);
+    assert.ok(++moves <= supports);
   }
+  assert.equal(moves, supports);
   for (const p of [red, blue]) {
     const s = await p.next((m) => m.type === "room" && m.room.game?.status === "finished");
-    assert.equal(s.room.game.winner, "red");
+    assert.equal(s.room.game.winner, "blue");
   }
   red.ws.send(JSON.stringify({ type: "start" }));
   await blue.next(m => m.type === "room" && m.room.gameNumber === 2);
@@ -114,7 +126,7 @@ test("a message over 1 KB closes the socket with 1009 and the server keeps servi
 test("malformed messages get bad_message", async (t) => {
   const { port } = await startApp(t);
   const s = await openSocket(port);
-  for (const raw of ["not json", "null", "[]", '{"type":"settings","mode":"purple"}', '{"type":"join","code":"ABCDE"}', '{"type":"dance"}', '{"type":"join"}', '{"type":"cut","edgeId":"1"}', '{"type":"join","code":"ABCDE","token":5}']) {
+  for (const raw of ["not json", "null", "[]", '{"type":"settings","mode":"purple"}', '{"type":"settings","size":"huge"}', '{"type":"settings","size":3}', '{"type":"join","code":"ABCDE"}', '{"type":"dance"}', '{"type":"join"}', '{"type":"cut","edgeId":"1"}', '{"type":"join","code":"ABCDE","token":5}']) {
     s.msgs.length = 0;
     s.ws.send(raw);
     const m = await s.next((x) => x.type === "error");
@@ -208,4 +220,37 @@ test("the heartbeat sends a ping message the client can see", async (t) => {
   const ping = await s.next((m) => m.type === "ping");
   assert.deepEqual(ping, { type: "ping" });
   s.ws.close();
+});
+
+test("mode and size settings round-trip and produce the selected board", async (t) => {
+  const { port } = await startApp(t, { registry: { rng: () => 0 } });
+  for (const mode of ["redblue", "redbluegreen", "green"]) for (const size of ["small", "medium", "big"]) {
+    const { code } = (await createGame(port)).json;
+    const host = await openSocket(port), guest = await openSocket(port);
+    host.ws.send(JSON.stringify({ type: "join", code, name: "Host" }));
+    await host.next(m => m.type === "joined");
+    guest.ws.send(JSON.stringify({ type: "join", code, name: "Guest" }));
+    await host.next(m => m.type === "room" && m.room.members.length === 2);
+    host.ws.send(JSON.stringify({ type: "settings", mode, board: "houses", size, redPlayer: "host" }));
+    await guest.next(m => m.type === "room" && m.room.settings.size === size && m.room.settings.board === "houses" && m.room.settings.mode === mode);
+    host.ws.send(JSON.stringify({ type: "start" }));
+    for (const player of [host, guest]) {
+      const snapshot = await player.next(m => m.type === "room" && m.room.status === "playing");
+      assert.equal(snapshot.room.settings.size, size);
+      assert.deepEqual(snapshot.room.game.board, makeBoard("houses", mode, 0, size));
+    }
+    if (mode === "redbluegreen") {
+      let current = (await host.next(m => m.type === "room" && m.room.status === "playing")).room.game;
+      for (const player of [host, guest]) {
+        const edge = current.board.edges.find(e => e.color === "green");
+        assert.ok(edge);
+        player.ws.send(JSON.stringify({ type: "cut", edgeId: edge.id }));
+        const next = await host.next(m => m.type === "room" && m.lastMove?.edgeId === edge.id);
+        current = next.room.game;
+        assert.ok(!current.board.edges.some(e => e.id === edge.id));
+        await guest.next(m => m.type === "room" && m.lastMove?.edgeId === edge.id);
+      }
+    }
+    host.ws.close(); guest.ws.close();
+  }
 });

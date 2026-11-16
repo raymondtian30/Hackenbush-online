@@ -85,7 +85,7 @@
       li.textContent = m.name + (m.id === r.hostId ? ' (host)' : '') + (m.connected ? '' : ' — disconnected'); return li;
     }));
     const host = r.hostId === state.memberId;
-    for (const [field, id] of Object.entries({ mode: 'setting-mode', board: 'setting-board', redPlayer: 'setting-red' })) {
+    for (const [field, id] of Object.entries({ mode: 'setting-mode', board: 'setting-board', size: 'setting-size', redPlayer: 'setting-red' })) {
       $(id).value = r.settings[field]; $(id).disabled = !host;
     }
     labels('setting-mode', 'setting-red', true);
@@ -183,7 +183,7 @@
   }
   $('join').addEventListener('click', joinFromInput);
   $('code-input').addEventListener('keydown', e => { if (e.key === 'Enter') joinFromInput(); });
-  for (const [field, id] of Object.entries({ mode: 'setting-mode', board: 'setting-board', redPlayer: 'setting-red' })) {
+  for (const [field, id] of Object.entries({ mode: 'setting-mode', board: 'setting-board', size: 'setting-size', redPlayer: 'setting-red' })) {
     $(id).addEventListener('change', () => {
       labels('setting-mode', 'setting-red', true); send({ type: 'settings', [field]: $(id).value });
     });
@@ -204,6 +204,12 @@
       const o = document.createElement('option'); o.value = b.id; o.textContent = b.name; $(id).appendChild(o);
     }
     $(id).value = 'random';
+  }
+  for (const id of ['setting-size', 'bot-size']) {
+    for (const size of Boards.SIZES) {
+      const o = document.createElement('option'); o.value = size.id; o.textContent = size.name; $(id).appendChild(o);
+    }
+    $(id).value = 'big';
   }
   $('bot-mode').addEventListener('change', () => labels('bot-mode', 'bot-side', false));
   $('play-bot').addEventListener('click', () => { if (requireName()) { state.mode = 'bot'; show('bot-setup'); } });
@@ -232,7 +238,7 @@
     const sides = { [humanSide]: { id: 'you', name: state.name },
       [Game.otherColor(humanSide)]: { id: 'bot', name: 'Bot (' + difficulty[0].toUpperCase() + difficulty.slice(1) + ')' } };
     Render.reset(); state.mode = 'bot';
-    state.bot = { game: Game.newGame(Boards.makeBoard(boardId, mode, seed), mode, sides), humanSide, difficulty, timer: null };
+    state.bot = { game: Game.newGame(Boards.makeBoard(boardId, mode, seed, $('bot-size').value), mode, sides), humanSide, difficulty, timer: null };
     $('banner').hidden = true; show('game'); updateBot();
     if (humanSide === 'blue') scheduleBot();
   }

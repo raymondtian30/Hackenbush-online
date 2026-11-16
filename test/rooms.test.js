@@ -1,6 +1,8 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { createRegistry, RoomCapError, cleanName } = require("../server/rooms");
+const { legalMoves, cutEdge } = require("../public/lib/game.js");
+const { makeBoard } = require("../public/lib/boards.js");
 
 const OPTS = { waitingMs: 600000, graceMs: 60000, idleMs: 1800000 };
 
@@ -151,7 +153,7 @@ test("settings, start, cut and leave before joining get not_joined", (t) => {
 
 test("a new room starts with the default settings and no game", (t) => {
   const { host } = twoInLobby(t);
-  assert.deepEqual(room(host).settings, { mode: "redblue", board: "random", redPlayer: "random" });
+  assert.deepEqual(room(host).settings, { mode: "redblue", board: "random", size: "big", redPlayer: "random" });
   assert.equal(room(host).game, null);
   assert.equal(room(host).status, "lobby");
 });
@@ -218,7 +220,7 @@ test("redPlayer random and board random use rng in the order board, red player, 
   ctx = twoInLobby(t, { rng: queue(2, 0) });
   ctx.registry.updateSettings(ctx.host, { board: "random", redPlayer: "host" });
   ctx.registry.start(ctx.host);
-  assert.equal(room(ctx.host).game.board.width, 820);
+  assert.deepEqual(room(ctx.host).game.board, makeBoard("cars", "redblue", 0));
 });
 
 test("redPlayer host means the new host after a hand-over", (t) => {
@@ -232,30 +234,54 @@ test("redPlayer host means the new host after a hand-over", (t) => {
   assert.equal(room(cat).game.sides.red.id, "m2");
 });
 
+// Take ground edges first to exercise cascades and finish a large board quickly.
+function nextCut(ctx) {
+  const game = room(ctx.host).game;
+  const ground = new Set(game.board.nodes.filter(n => n.ground).map(n => n.id));
+  const legal = new Set(legalMoves(game, game.turn));
+  const edge = game.board.edges.find(e => legal.has(e.id) && (ground.has(e.a) || ground.has(e.b)))
+    || game.board.edges.find(e => legal.has(e.id));
+  const player = game.turn === "red" ? ctx.host : ctx.guest;
+  ctx.registry.cut(player, edge.id);
+}
+
+function finish(ctx) {
+  let moves = 0;
+  while (room(ctx.host).game.status === "playing") {
+    assert.ok(moves++ < 400, "game must finish");
+    nextCut(ctx);
+  }
+}
+
 test("a Red-Blue game ends back in the lobby with the finished game and the winner", (t) => {
-  const { registry, host, guest } = started(t);
+  const ctx = started(t);
+  const { host, guest } = ctx;
   assert.equal(room(host).status, "playing");
   assert.equal(room(host).gameNumber, 1);
-  registry.cut(host, 0);
-  registry.cut(guest, 4);
-  registry.cut(host, 9);
+  const before = structuredClone(room(host).game.board);
+  const edgeId = legalMoves(room(host).game, "red")[0];
+  const after = cutEdge(before, edgeId);
+  ctx.registry.cut(host, edgeId);
+  assert.deepEqual(last(host, "room").lastMove, { edgeId, fell: {
+    edges: before.edges.filter(e => e.id !== edgeId && !after.edges.some(a => a.id === e.id)).map(e => e.id),
+    nodes: before.nodes.filter(n => !after.nodes.some(a => a.id === n.id)).map(n => n.id),
+  } });
+  finish(ctx);
   for (const conn of [host, guest]) {
     const r = room(conn);
     assert.equal(r.status, "lobby");
     assert.equal(r.game.status, "finished");
-    assert.equal(r.game.winner, "red");
+    assert.equal(r.game.winner, "blue");
     assert.equal(r.game.reason, "no_moves");
     assert.equal(r.game.sides.red.name, "Ana");
   }
-  assert.deepEqual(last(host, "room").lastMove, { edgeId: 9, fell: { edges: [10, 11, 12], nodes: [12, 13, 14, 15] } });
 });
 
 test("a Green game lets both sides cut, then play again starts game 2", (t) => {
-  const { registry, host, guest } = started(t, "green");
-  registry.cut(host, 0);
-  registry.cut(guest, 4);
-  registry.cut(host, 9);
-  assert.equal(room(guest).game.winner, "red");
+  const ctx = started(t, "green");
+  const { registry, host, guest } = ctx;
+  finish(ctx);
+  assert.equal(room(guest).game.winner, "blue");
   assert.equal(room(guest).status, "lobby");
   registry.start(host);
   assert.equal(room(host).gameNumber, 2);
@@ -326,15 +352,17 @@ test("a disconnect in the lobby past the grace period removes the member", (t) =
 });
 
 test("a grace timer started mid-game still fires after the game ends by a normal win", (t) => {
-  const { registry, host, guest } = started(t, "green");
-  registry.cut(host, 0);
-  registry.cut(guest, 4);
-  registry.disconnect(guest);
-  registry.cut(host, 9);
+  const ctx = started(t, "green");
+  const { registry, host, guest } = ctx;
+  const ground = new Set(room(host).game.board.nodes.filter(n => n.ground).map(n => n.id));
+  const supports = room(host).game.board.edges.filter(e => ground.has(e.a) || ground.has(e.b)).length;
+  for (let i = 0; i < supports - 1; i++) nextCut(ctx);
+  registry.disconnect(host);
+  nextCut(ctx);
   assert.equal(room(host).game.reason, "no_moves");
   t.mock.timers.tick(60000);
-  const r = room(host);
-  assert.deepEqual(r.members.map((m) => m.id), ["m1"]);
+  const r = room(guest);
+  assert.deepEqual(r.members.map((m) => m.id), ["m2"]);
   assert.equal(r.game.reason, "no_moves", "the finished result is not overwritten");
 });
 
@@ -358,4 +386,23 @@ test("an accepted message resets the idle timer and a rejected one does not", (t
   assert.equal(err(host).code, "illegal_move");
   t.mock.timers.tick(100001);
   assert.deepEqual(host.closed, { code: 4001, reason: "room closed" });
+});
+
+test("host size choices reach both players and survive starting and rematching", (t) => {
+  for (const mode of ["redblue", "redbluegreen", "green"]) for (const size of ["small", "medium", "big"]) {
+    const ctx = twoInLobby(t, { rng: queue(0) });
+    const { registry, host, guest } = ctx;
+    registry.updateSettings(guest, { size });
+    assert.equal(err(guest).code, "not_host");
+    registry.updateSettings(host, { mode, board: "classic", size, redPlayer: "host" });
+    assert.equal(room(guest).settings.size, size);
+    registry.start(host);
+    assert.deepEqual(room(guest).game.board, makeBoard("classic", mode, 0, size));
+    registry.updateSettings(host, { size: "small" });
+    assert.equal(err(host).code, "not_in_lobby");
+    finish(ctx);
+    registry.start(host);
+    assert.equal(room(guest).settings.size, size);
+    assert.deepEqual(room(guest).game.board, makeBoard("classic", mode, 0, size));
+  }
 });

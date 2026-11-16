@@ -55,10 +55,13 @@ button:hover { background: #eee; }
 #status { font-weight: 600; min-height: 1.4em; }
 
 .board-wrap { position: relative; }
+.board-scroll { overflow-x: auto; border-radius: 8px; }
+.board-hint { color: #555; font-size: .9rem; }
 
 #board {
   display: block;
   width: 100%;
+  min-width: 1280px;
   height: auto;
   background: #fffdf7;
   border: 1px solid #ccc;

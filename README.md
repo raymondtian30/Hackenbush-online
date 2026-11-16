@@ -1,24 +1,48 @@
 # Hackenbush Online
 
-Play Red-Blue or Green Hackenbush with a friend or an offline bot.
+Play Red-Blue, Red-Blue-Green or Green Hackenbush with a friend or an offline bot.
 Try the [live beta](https://hackenbush-online.vercel.app).
 
 Enter your name, create a room and share its five-character code. The host
-chooses the mode, board and starting side, then presses **Start**. Both players
+chooses the mode, board, size and starting side, then presses **Start**. Both players
 return to the room after the result and can play again. **Copy code** copies
 only the code. Names are saved on your device.
 
 **Play vs Bot** runs entirely in your browser, even when the game server is
-unreachable. Choose Easy, Medium or Hard, your side and a board: Classic,
-Flower Garden, Forest or Bouquet. Hard chooses using exact game values;
-Medium and Easy mix those moves with random legal moves.
+unreachable. Choose Easy, Medium or Hard, your side, a scene and a board size.
+Hard uses exact values for tree positions, exact search for small graph endgames,
+and a mobility/cascade heuristic for larger shared-support positions. Medium
+and Easy mix those choices with random legal moves.
 
 ## How the game works
 
 Players take turns cutting an edge. In Red-Blue, Red cuts red edges and Blue
-cuts blue edges. In Green, either player can cut any edge. Anything no longer
-connected to the ground falls, including flower petals. If you have no legal
+cuts blue edges. **Red-Blue-Green** adds randomly scattered green edges that
+either player may cut. In Green, every edge is shared. Anything no longer
+connected to the ground falls. If you have no legal
 move on your turn, you lose. Red moves first (the first player in Green).
+
+Choose **Small**, **Medium** or **Big** in the room settings or bot setup.
+Small has 120–180 edges, Medium has 262–360, and Big (the default) has 398–540.
+
+The scenes are **Town & Country** (a mix of houses, cars and animals),
+**Neighborhood**, **Road Trip**, and **Animal Park**. They include different
+roofs and window frames, sedans, trucks, buses, dogs, cats and birds.
+
+Each object has two or three floor edges meeting at one shared node. Cutting
+one support can leave the entire object standing; cutting its final route to
+ground triggers the collapse. Closed outlines and alternate paths also remain
+connected until every route to ground is gone.
+
+Red-Blue and Red-Blue-Green scenes pair each object with an identical,
+opposite-colored twin. Mixed mode turns about 20% of eligible edges green,
+using the same green positions on both twins. Two floor supports per object
+stay private to preserve game length. The remaining Red and Blue edges keep
+their original seeded colors. Scenes keep equal private floor access,
+which balances the structures;
+perfect play still favors the second player. Completed games require at least
+12, 24 or 36 cuts for Small, Medium or Big in every mode. Scroll sideways to
+explore the larger scenes.
 
 ## Requirements
 

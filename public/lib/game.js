@@ -1,4 +1,4 @@
-// Pure Hackenbush rules for Red-Blue and Green. No I/O; every function works
+// Pure Hackenbush rules for Red-Blue, Red-Blue-Green and Green. No I/O; every function works
 // on plain data. Loaded by the browser (window.HackenbushGame) and required by
 // the server.
 //
@@ -76,7 +76,7 @@
   }
 
   // Throws if the board breaks a rule. Checks run in order: ids, endpoints,
-  // colour, reachability, then the tree shape.
+  // colour and reachability. Cycles and shared ground supports are legal.
   function validateBoard(board) {
     const nodeIds = new Set();
     for (const n of board.nodes) {
@@ -98,7 +98,11 @@
     for (const n of board.nodes) {
       if (!seen.has(n.id)) throw new Error(`Node ${n.id} has no path to ground`);
     }
-    checkTrees(board);
+  }
+
+  function isTreeBoard(board) {
+    try { checkTrees(board); return true; }
+    catch { return false; }
   }
 
   // sides: { red: {id, name}, blue: {id, name} }.
@@ -169,5 +173,5 @@
     game.reason = reason;
   }
 
-  return { validateBoard, newGame, canCut, legalMoves, applyCut, cutEdge, prune, forfeit, otherColor };
+  return { validateBoard, isTreeBoard, newGame, canCut, legalMoves, applyCut, cutEdge, prune, forfeit, otherColor };
 });

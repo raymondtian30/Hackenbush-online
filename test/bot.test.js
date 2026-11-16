@@ -1,7 +1,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const { mulberry32, BOARDS, makeBoard } = require("../public/lib/boards.js");
-const { newGame, legalMoves, cutEdge } = require("../public/lib/game.js");
+const { newGame, legalMoves, cutEdge, applyCut } = require("../public/lib/game.js");
 const bot = require("../public/lib/bot.js");
 
 const SIDES = { red: { id: "m1", name: "A" }, blue: { id: "m2", name: "B" } };
@@ -193,9 +193,9 @@ test("difficulty picks best moves or any legal move by the random draw", () => {
   assert.equal(bot.chooseMove(newGame({ ...board, edges: [board.edges[2]] }, "redblue", SIDES), "red", "hard"), null);
 });
 
-test("a hard move takes under 200 ms on every board in both modes", () => {
+test("a hard move takes under 200 ms on every board in all three modes", () => {
   for (const { id } of BOARDS) {
-    for (const mode of ["redblue", "green"]) {
+    for (const mode of ["redblue", "redbluegreen", "green"]) {
       const game = newGame(makeBoard(id, mode, 0), mode, SIDES);
       const start = performance.now();
       const move = bot.chooseMove(game, "red", "hard");
@@ -204,4 +204,79 @@ test("a hard move takes under 200 ms on every board in both modes", () => {
       assert.ok(ms < 200, `${id} ${mode}: ${ms.toFixed(1)} ms`);
     }
   }
+});
+
+test("shared-support graph values refuse the tree shortcut; Hard solves the endgame", () => {
+  const board = {
+    width: 200, height: 200,
+    nodes: [{ id: 0, x: 0, y: 0, ground: true }, { id: 1, x: 100, y: 0, ground: true },
+      { id: 2, x: 50, y: 80, ground: false }, { id: 3, x: 50, y: 160, ground: false }],
+    edges: [{ id: 0, a: 0, b: 2, color: "green" }, { id: 1, a: 1, b: 2, color: "green" },
+      { id: 2, a: 2, b: 3, color: "green" }],
+  };
+  assert.throws(() => bot.greenValue(board), /cycles or shared ground/);
+  assert.deepEqual(bot.bestMoves(newGame(board, "green", SIDES), "red"), [2]);
+  const redblue = structuredClone(board);
+  redblue.edges.forEach((e, i) => e.color = i === 1 ? "blue" : "red");
+  assert.throws(() => bot.redBlueValue(redblue), /cycles or shared ground/);
+});
+
+test("Hard's cyclic endgame choices match brute force in both modes", () => {
+  for (let seed = 0; seed < 60; seed++) for (const mode of ["redblue", "green"]) {
+    const colors = mode === "green" ? ["green"] : ["red", "blue"];
+    const board = randomPosition(seed, colors);
+    const target = board.nodes.find(n => !n.ground);
+    if (!target) continue;
+    const root = board.nodes.length;
+    board.nodes.push({ id: root, x: 200, y: 0, ground: true });
+    board.edges.push({ id: board.edges.length, a: root, b: target.id, color: colors[seed % colors.length] });
+    for (const side of ["red", "blue"]) {
+      const game = newGame(board, mode, SIDES), legal = legalMoves(game, side);
+      const before = structuredClone(game);
+      const selected = bot.bestMoves(game, side);
+      assert.deepEqual(game, before, "search must not mutate the live game");
+      assert.ok(selected.every(id => legal.includes(id)));
+      const value = mode === "green" ? bruteG(board) : bruteRB(board);
+      const winning = mode === "green" ? value !== 0 : side === "red" ? value > 0 : value < 0;
+      if (!winning) continue;
+      assert.ok(selected.length > 0);
+      for (const id of selected) {
+        const after = cutEdge(board, id);
+        if (mode === "green") assert.equal(bruteG(after), 0);
+        else if (side === "red") assert.ok(bruteRB(after) >= 0);
+        else assert.ok(bruteRB(after) <= 0);
+      }
+    }
+  }
+});
+
+test("Hard completes shared-support games in every scene and all three modes", () => {
+  for (const { id } of BOARDS) for (const mode of ["redblue", "redbluegreen", "green"]) {
+    const game = newGame(makeBoard(id, mode, 7, "small"), mode, SIDES);
+    const maximum = game.board.edges.length;
+    let moves = 0;
+    while (game.status === "playing") {
+      const side = game.turn, edge = bot.chooseMove(game, side, "hard", () => 0);
+      assert.ok(legalMoves(game, side).includes(edge), `${id} ${mode}`);
+      assert.ok(applyCut(game, side, edge).ok);
+      assert.ok(++moves <= maximum);
+    }
+    assert.ok(moves >= 12, `${id} ${mode}: ${moves} moves`);
+    assert.equal(legalMoves(game, game.turn).length, 0);
+  }
+});
+
+test("mixed mode uses shared green cuts on trees and after other colors disappear", () => {
+  for (const [letters, side] of [["BG", "red"], ["RG", "blue"], ["GG", "red"], ["RB", "blue"]]) {
+    const game = newGame(stalk(letters), "redbluegreen", SIDES);
+    game.turn = side;
+    const before = structuredClone(game);
+    const moves = bot.bestMoves(game, side);
+    assert.ok(moves.length > 0);
+    assert.deepEqual(game, before);
+    assert.ok(moves.every(id => legalMoves(game, side).includes(id)));
+    const move = bot.chooseMove(game, side, "hard", () => 0);
+    assert.ok(applyCut(game, side, move).ok);
+  }
+  assert.deepEqual(bot.bestMoves(newGame(stalk("BG"), "redbluegreen", SIDES), "red"), [1]);
 });

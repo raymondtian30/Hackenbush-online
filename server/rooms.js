@@ -47,7 +47,7 @@ function createRegistry(options = {}) {
     let code;
     do { code = Array.from({ length: 5 }, () => ALPHABET[crypto.randomInt(ALPHABET.length)]).join(''); } while (rooms.has(code));
     const r = { code, status: 'lobby', hostId: null, members: [], nextMemberNum: 1,
-      settings: { mode: 'redblue', board: 'random', redPlayer: 'random' }, game: null, gameNumber: 0,
+      settings: { mode: 'redblue', board: 'random', size: 'big', redPlayer: 'random' }, game: null, gameNumber: 0,
       waitingTimer: null, idleTimer: null, deleted: false };
     rooms.set(code, r);
     r.waitingTimer = setTimeout(() => { if (!r.deleted) deleteRoom(r); }, waitingMs);
@@ -99,7 +99,7 @@ function createRegistry(options = {}) {
     const red = r.settings.redPlayer === 'host' ? host : r.settings.redPlayer === 'guest' ? guest : rng(2) === 0 ? host : guest;
     const blue = red === host ? guest : host;
     const seed = rng(2 ** 31);
-    r.game = newGame(makeBoard(board, r.settings.mode, seed), r.settings.mode,
+    r.game = newGame(makeBoard(board, r.settings.mode, seed, r.settings.size), r.settings.mode,
       { red: { id: red.id, name: red.name }, blue: { id: blue.id, name: blue.name } });
     r.gameNumber++; r.status = 'playing'; success(r);
   }

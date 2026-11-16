@@ -7,7 +7,7 @@ const path = require("node:path");
 const { WebSocketServer } = require("ws");
 const { createRegistry, RoomCapError } = require("./server/rooms");
 
-const { BOARDS } = require("./public/lib/boards.js");
+const { BOARDS, SIZES } = require("./public/lib/boards.js");
 
 const PUBLIC_DIR = path.join(__dirname, "public");
 const HEARTBEAT_MS = 30000;
@@ -158,7 +158,7 @@ function createApp(options = {}) {
       }
       if (msg.type === "settings") {
         const patch = {};
-        const choices = { mode: ["redblue", "green"], board: [...BOARDS.map(b => b.id), "random"], redPlayer: ["host", "guest", "random"] };
+        const choices = { mode: ["redblue", "redbluegreen", "green"], board: [...BOARDS.map(b => b.id), "random"], size: SIZES.map(s => s.id), redPlayer: ["host", "guest", "random"] };
         for (const [key, values] of Object.entries(choices)) {
           if (Object.hasOwn(msg, key)) {
             if (!values.includes(msg[key])) return bad();

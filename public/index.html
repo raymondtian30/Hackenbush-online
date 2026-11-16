@@ -11,7 +11,7 @@
   <main>
     <section id="menu">
       <h1>Hackenbush Online</h1>
-      <p class="intro">Cut an edge; anything no longer connected to the ground falls. In Red-Blue, cut your color. In Green, cut any edge. If you cannot move on your turn, you lose.</p>
+      <p class="intro">Cut your color or any green edge; anything no longer connected to the ground falls. In Green mode, every edge is shared. If you cannot move on your turn, you lose.</p>
       <label>Your name <input id="name-input" maxlength="20" autocomplete="nickname" placeholder="Name"></label>
       <button id="create" type="button">Create Room</button>
       <div class="join-row">
@@ -27,8 +27,9 @@
       <input id="copy-fallback" readonly hidden aria-label="Room code to copy">
       <ul id="members"></ul>
       <div class="settings">
-        <label>Mode <select id="setting-mode"><option value="redblue">Red-Blue</option><option value="green">Green</option></select></label>
+        <label>Mode <select id="setting-mode"><option value="redblue">Red-Blue</option><option value="redbluegreen">Red-Blue-Green</option><option value="green">Green</option></select></label>
         <label>Board <select id="setting-board"></select></label>
+        <label>Board size <select id="setting-size"></select></label>
         <label>Starting side <select id="setting-red"><option value="host">Host plays Red</option><option value="guest">Guest plays Red</option><option value="random">Random</option></select></label>
       </div>
       <p id="last-result" aria-live="polite"></p>
@@ -39,8 +40,11 @@
     <section id="game" hidden>
       <header class="game-header"><strong id="players"></strong></header>
       <p id="status" aria-live="polite"></p>
+      <p class="board-hint">Scroll sideways to explore the whole board.</p>
       <div class="board-wrap">
-        <svg id="board" role="group" aria-label="Hackenbush board"></svg>
+        <div class="board-scroll" tabindex="0" role="region" aria-label="Scrollable game board">
+          <svg id="board" role="group" aria-label="Hackenbush board"></svg>
+        </div>
         <div id="banner" role="status" hidden>
           <p id="result"></p>
           <button id="play-again" type="button">Play Again</button>
@@ -52,8 +56,9 @@
     <section id="bot-setup" hidden>
       <h1>Play vs Bot</h1>
       <div class="settings">
-        <label>Mode <select id="bot-mode"><option value="redblue">Red-Blue</option><option value="green">Green</option></select></label>
+        <label>Mode <select id="bot-mode"><option value="redblue">Red-Blue</option><option value="redbluegreen">Red-Blue-Green</option><option value="green">Green</option></select></label>
         <label>Board <select id="bot-board"></select></label>
+        <label>Board size <select id="bot-size"></select></label>
         <label>Difficulty <select id="bot-difficulty"><option value="easy">Easy</option><option value="medium">Medium</option><option value="hard">Hard</option></select></label>
         <label>Your side <select id="bot-side"><option value="human-first-or-red">I play Red</option><option value="bot-first-or-blue">I play Blue</option><option value="random">Random</option></select></label>
       </div>

@@ -1,12 +1,12 @@
-// The bot: exact game values and move choice. Runs in the browser
+// The bot: exact tree values and graph-aware move choice. Runs in the browser
 // (window.HackenbushBot); Node loads it only in tests.
 //
 // Values (see Berlekamp, Conway, Guy, Winning Ways, vol. 1):
 //  - Red-Blue: a dyadic number. Positive means Red wins whoever moves first,
 //    negative means Blue wins, zero means the player to move loses.
 //  - Green: a nim-value. Zero means the player to move loses.
-// Both formulas need every board to be a set of trees (plus loops), one ground
-// node per tree; boards.js and validateBoard guarantee that.
+// These formulas require trees with one ground node each. Shared-support
+// scenes use exact endgame search and a mobility/cascade heuristic on large graphs.
 (function (root, factory) {
   if (typeof module === "object" && module.exports) module.exports = factory(require("./game.js"));
   else root.HackenbushBot = factory(root.HackenbushGame);
@@ -57,6 +57,7 @@
   // Calls visit(node, parentEdge|null, children) for each node of each tree,
   // children first. Loops are returned separately, per node.
   function forEachNodeBottomUp(board, visit) {
+    if (!Game.isTreeBoard(board)) throw new Error("Exact tree values cannot evaluate cycles or shared ground supports");
     const adj = new Map(board.nodes.map((n) => [n.id, []]));
     const loops = new Map(board.nodes.map((n) => [n.id, []]));
     for (const e of board.edges) {
@@ -121,10 +122,58 @@
 
   // ---- Choosing moves. ----
 
-  // Ids of the legal cuts that keep the best result for `side`, in board order.
+  // Small graph endgames are solved by normal-play minimax. Remaining edge
+  // ids completely identify a position within this one search and seed.
+  function graphEndgame(board, side, memo) {
+    const key = side + ":" + board.edges.map(e => e.id).join(",");
+    if (memo.has(key)) return memo.get(key);
+    for (const edge of board.edges) {
+      if (Game.canCut(edge, side) && !graphEndgame(Game.cutEdge(board, edge.id), Game.otherColor(side), memo)) {
+        memo.set(key, true);
+        return true;
+      }
+    }
+    memo.set(key, false);
+    return false;
+  }
+
+  function graphMoves(game, side, moves) {
+    const opponent = Game.otherColor(side);
+    if (game.board.edges.length <= 10) {
+      const memo = new Map();
+      const winning = moves.filter(id => !graphEndgame(Game.cutEdge(game.board, id), opponent, memo));
+      return winning.length ? winning : moves;
+    }
+    const ground = new Set(game.board.nodes.filter(n => n.ground).map(n => n.id));
+    const scored = moves.map(id => {
+      // prune only replaces the node/edge arrays, so these scoring positions
+      // can safely share immutable node and edge records with the live board.
+      const board = { ...game.board, edges: game.board.edges.filter(e => e.id !== id) };
+      Game.prune(board);
+      let mine = 0, theirs = 0, mySupports = 0, theirSupports = 0;
+      for (const e of board.edges) {
+        const supported = ground.has(e.a) || ground.has(e.b);
+        if (Game.canCut(e, side)) { mine++; if (supported) mySupports++; }
+        if (Game.canCut(e, opponent)) { theirs++; if (supported) theirSupports++; }
+      }
+      // Reward opponent cascades and preserve legal moves and ground access.
+      // Green has shared mobility; use the parity of the actual remaining graph
+      // only as a heuristic, never as an asserted exact nim-value.
+      const score = !theirs ? 1e6 : !mine ? -1e6 : game.mode === "green"
+        ? (board.edges.length % 2 === 0 ? 1 : -1) + (game.board.edges.length - board.edges.length) / 1000
+        : mine - theirs + (mySupports - theirSupports) / 4;
+      return { id, score };
+    });
+    const best = Math.max(...scored.map(s => s.score));
+    return scored.filter(s => s.score === best).map(s => s.id);
+  }
+
+  // Highest-ranked legal cuts for `side`, in board order. Tree values and small
+  // graph endgames are exact; large graph positions use the heuristic above.
   function bestMoves(game, side) {
     const moves = Game.legalMoves(game, side);
     if (moves.length === 0) return [];
+    if (game.mode === "redbluegreen" || !Game.isTreeBoard(game.board)) return graphMoves(game, side, moves);
     const scored = moves.map((id) => {
       const g = structuredClone(game);
       g.turn = side;
