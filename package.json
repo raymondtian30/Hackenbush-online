@@ -4,6 +4,12 @@
   "private": true,
   "type": "commonjs",
   "engines": { "node": ">=22" },
-  "scripts": { "start": "node server.js", "test": "node --test" },
-  "dependencies": { "ws": "^8.18.0" }
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test",
+    "deploy:client": "node scripts/deploy-client.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
 }
